@@ -18,7 +18,8 @@ async def test_mcp_provider():
         model_id="mcp:example",
         server_type="stdio",
         command="python",
-        args=["-m", "src.ember.examples.mcp.example_mcp_server"]
+        args=["-m", "ember.examples.mcp.example_mcp_server"],
+        # Make sure we're using the module path as Python would see it
     )
     
     # Use the provider as an async context manager
