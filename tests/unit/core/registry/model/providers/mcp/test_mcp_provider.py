@@ -245,12 +245,17 @@ async def test_forward_api_call_failure(mcp_client_fixture: McpClient, mock_sess
 
     # Expect ProviderAPIError because retry_error_cls is set.
     # Match against the message from the *mocked* exception, which will be wrapped.
-    with pytest.raises(Exception):
-        await mcp_client_fixture.forward(request)
+    with pytest.raises(ProviderAPIError): # Keep this to ensure *an* error is raised
+        try:
+            await mcp_client_fixture.forward(request)
+        except ProviderAPIError:
+             # Verify the mock was called the expected number of times (initial + 2 retries)
+             assert mock_session_object.create_message.call_count == 3
+             raise # Re-raise the caught exception to satisfy pytest.raises
 
-    # Now that the AttributeError is fixed, create_message will be called by retry.
-    # Verify it was called exactly 3 times before failing.
-    assert mock_session_object.create_message.call_count == 3
+    # Add assertion *after* the block if the exception structure was correct,
+    # or inside the except block as shown above if the exception structure causes the TypeError.
+    # assert mock_session_object.create_message.call_count == 3
 
 @pytest.mark.asyncio
 async def test_terminate_success(

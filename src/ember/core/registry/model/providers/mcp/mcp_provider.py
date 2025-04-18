@@ -31,6 +31,7 @@ from ember.plugin_system import provider
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp.prompts import base
+from mcp.shared.exceptions import McpError
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class ConfigurationError(Exception):
 @provider("MCP")
 class McpClient(BaseProviderModel):
     # Store session and context managers
-    _model: BaseProviderModel # Required, the model that will be invoked after the MCP connection
+    _model: Optional[BaseProviderModel] = None # Optional as a workaround so we can call registry.get_model(), have to inject manually
     _session: Optional[ClientSession] = None
     _stdio_client: Optional[stdio_client] = None
     _read: Optional[asyncio.StreamReader] = None
@@ -60,7 +61,7 @@ class McpClient(BaseProviderModel):
     # Define default parameters
     DEFAULT_PARAMS: Final[Dict[str, Any]] = {} # Add MCP defaults if any
 
-    def __init__(self, model_info: ModelInfo, model: BaseProviderModel):
+    def __init__(self, model_info: ModelInfo, model: Optional[BaseProviderModel] = None):
         """
         Initializes the McpProvider.
 
@@ -145,7 +146,8 @@ class McpClient(BaseProviderModel):
 
             # Define callbacks (example: sampling)
             # TODO: Make callbacks configurable or part of the provider logic
-            async def handle_sampling_message(
+            # I think we have to call model.forward of the actual model or something along those lines here
+            async def handle_sampling_message_deprecated(
                 message: types.CreateMessageRequestParams,
             ) -> types.CreateMessageResult:
                  # This basic callback just echoes - replace with actual model logic
@@ -156,6 +158,88 @@ class McpClient(BaseProviderModel):
                      model=self.model_info.id, # Use configured model ID
                      stopReason="endTurn",
                  )
+            
+            async def handle_sampling_message(
+                message: types.CreateMessageRequestParams,
+            ) -> types.CreateMessageResult:
+
+                self.logger.info(f"Handling sampling message via underlying model: {self._model.model_info.id}")
+                self.logger.debug(f"Received MCP sampling request params: {message}")
+
+                if message.messages is None:
+                    #TODO what do do with empty message
+                    self.logger.error("Received sampling message with no messages.")
+                    # Return error result matching MCP spec
+                    return types.CreateMessageResult(
+                        role="assistant",
+                        content=types.TextContent(type="text", text="Error: Received empty message list."),
+                        model=self._model.model_info.id, # Use the intended model ID
+                        stopReason="error",
+                    )
+                
+                # 1. Convert MCP Params to ChatRequest
+                # We have to assume the last message is the prompt
+                last_message = message.messages[-1]
+                user_prompt = last_message.content.text
+
+                # Extract context (system prompt)
+                context = message.systemPrompt
+
+                # Extract parameters (use getattr for safety as they might be optional)
+                max_tokens = message.maxTokens # Required by MCP spec
+                temperature = getattr(message, 'temperature', None)
+                stop_sequences = getattr(message, 'stopSequences', None)
+
+                 # Construct the Ember ChatRequest
+                chat_request = ChatRequest(
+                    prompt=user_prompt,
+                    context=context,
+                    # history= ... # Add history conversion logic here if required
+                    max_tokens=max_tokens, # Pass directly if available on ChatRequest
+                    temperature=temperature, # Pass directly if available on ChatRequest
+                    stop_sequences=stop_sequences, # Pass directly if available on ChatRequest
+                    # You might put less common or provider-specific params here:
+                    # provider_params={...}
+                )
+                
+                self.logger.debug(f"Constructed Ember ChatRequest: {chat_request}")
+
+                # --- 2. Call the underlying model ---
+                try:
+                    response: ChatResponse = await self._model.forward(request=chat_request)
+                    self.logger.debug(f"Received response from underlying model {self._model.model_info.id}: {response}")
+
+                except Exception as e:
+                    self.logger.error(f"Error invoking underlying model {self._model.model_info.id}: {e}", exc_info=True)
+                    # Return an error message within the MCP protocol
+                    return types.CreateMessageResult(
+                        role="assistant",
+                        content=types.TextContent(type="text", text=f"Error during model invocation: {str(e)}"),
+                        model=self._model.model_info.id,
+                        stopReason="error",
+                    )
+
+                 # --- 3. Convert Ember ChatResponse to MCP CreateMessageResult ---
+                if not isinstance(response.data, str):
+                    self.logger.warning(f"Underlying model returned non-string data type {type(response.data)}. Converting to string.")
+                    response_text = str(response.data)
+                else:
+                    response_text = response.data
+
+                # Determine stop reason (simplistic for now)
+                # TODO: Potentially extract a more specific stop reason from response.raw_output
+                stop_reason = "endTurn" # Default stop reason
+
+                mcp_result = types.CreateMessageResult(
+                    role="assistant",
+                    content=types.TextContent(type="text", text=response_text),
+                    model=self._model.model_info.id, # Use the ID of the model that actually ran
+                    stopReason=stop_reason,
+                    # TODO: Map usage stats if CreateMessageResult supports it
+                    # usage=response.usage # Depends on mcp.types definition
+                )
+                self.logger.debug(f"Returning MCP result: {mcp_result}")
+                return mcp_result
 
             # Create and enter the ClientSession context
             self._session = ClientSession(
@@ -237,7 +321,7 @@ class McpClient(BaseProviderModel):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry_error_cls=ProviderAPIError,
+        # retry_error_cls=ProviderAPIError, # Removed
         reraise=True,
     )
     async def forward(
@@ -283,7 +367,7 @@ class McpClient(BaseProviderModel):
             # setting a default
             mcp_params.max_tokens = 1024 #TODO What should the default be?
 
-        # 4. Prepare MCP Request Parameters
+        # 4. Prepare MCP Request Parameters object (This part is correct)
         mcp_request_params = types.CreateMessageRequestParams(
             messages=mcp_messages,
             model=self.model_info.id,
@@ -298,10 +382,48 @@ class McpClient(BaseProviderModel):
         # Initialize usage with a default UsageStats object
         usage = UsageStats()
 
-        # 5. Call MCP create_message
-        self.logger.debug(f"Sending message to MCP: {mcp_request_params}")
-        result: types.CreateMessageResult = await self._session.create_message(mcp_request_params)
-        self.logger.debug(f"Received message from MCP: {result}")
+        # 5. Call MCP using send_request
+        self.logger.debug(f"Sending createMessage request to MCP: {mcp_request_params}")
+        try:
+            # --- MODIFICATION START ---
+            # 1. Create an instance of the specific request type
+            create_message_req_instance = types.CreateMessageRequest(
+                method="sampling/createMessage",
+                params=mcp_request_params
+            )
+
+            # 1a. Dump the instance to a dictionary suitable for validation
+            # Use mode='json' and by_alias=True to match how it might be serialized.
+            create_message_req_dict = create_message_req_instance.model_dump(mode='json', by_alias=True)
+            self.logger.debug(f"Serialized CreateMessageRequest to dict: {create_message_req_dict}")
+
+            # 2. Create the ClientRequest RootModel by passing the dictionary to the 'root' argument
+            # This might allow Pydantic's internal discrimination logic to work better.
+            mcp_request_object = types.ClientRequest(root=create_message_req_dict)
+
+            # 3. Use send_request with the validated ClientRequest object and expected result type
+            result: types.CreateMessageResult = await self._session.send_request(
+                mcp_request_object,
+                types.CreateMessageResult # Tell send_request what kind of result to expect
+            )
+            # --- MODIFICATION END ---
+
+            self.logger.debug(f"Received createMessage result from MCP: {result}")
+
+        # Add specific error handling for MCP errors if needed
+        except McpError as mcp_err:
+             self.logger.error(f"MCP Error during createMessage: {mcp_err.error}", exc_info=True)
+             # You might want to map McpError codes to Ember exceptions
+             raise ProviderAPIError(f"MCP request failed: {mcp_err.error.message}") from mcp_err
+        # Handle Pydantic validation errors specifically during request creation
+        except ValidationError as val_err:
+             self.logger.error(f"Pydantic validation error creating MCP request: {val_err}", exc_info=True)
+             raise ModelProviderError(f"Internal error creating MCP request structure: {val_err}") from val_err
+        except Exception as e:
+             # Catch other potential errors during the request
+             self.logger.error(f"Unexpected error during MCP createMessage call: {e}", exc_info=True)
+             raise ModelProviderError(f"Failed to send message via MCP: {e}") from e
+
 
         # --- Start of post-call processing ---
         # (Optional: Add a new try...except here if needed for result processing errors)
