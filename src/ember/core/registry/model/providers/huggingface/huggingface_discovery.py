@@ -1,4 +1,5 @@
 #TODO Just a placeholder implementation, need to implement discovery by author later
+#TODO Remove this comment!
 """Discovery mechanism for Hugging Face models.
 
 This module provides functionality to discover and register Hugging Face models
