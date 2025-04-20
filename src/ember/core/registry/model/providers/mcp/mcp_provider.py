@@ -41,7 +41,13 @@ class McpProviderParams(ProviderParams):
 
 # Define MCP specific parameters if needed (placeholder for now)
 class McpChatParameters(BaseChatParameters):
-    # Add any MCP specific parameters here later
+    # Explicitly include common parameters we intend to map
+    temperature: Optional[float] = None
+    stop_sequences: Optional[List[str]] = None
+    # Add MCP-specific fields corresponding to CreateMessageRequestParams
+    include_context: Optional[types.IncludeContext] = None
+    metadata: Optional[Dict[str, Any]] = None
+    # Add any other MCP specific parameters here later
     pass
 
 # Helper exception for configuration issues
@@ -367,16 +373,17 @@ class McpClient(BaseProviderModel):
             # setting a default
             mcp_params.max_tokens = 1024 #TODO What should the default be?
 
-        # 4. Prepare MCP Request Parameters object (This part is correct)
+        # 4. Prepare MCP Request Parameters object
         mcp_request_params = types.CreateMessageRequestParams(
+            # Required fields
             messages=mcp_messages,
-            model=self.model_info.id,
             maxTokens=mcp_params.max_tokens,
-            systemPrompt=system_prompt_text, # Pass context here
-            # Add other optional fields from mcp_params if they exist and are needed
-            # temperature=mcp_params.temperature,
-            # stopSequences=mcp_params.stop_sequences,
-            # ...
+
+            # Optional fields explicitly set
+            systemPrompt=system_prompt_text,
+            temperature=mcp_params.temperature if mcp_params.temperature is not None else None,
+            stopSequences=mcp_params.stop_sequences if mcp_params.stop_sequences else None,
+            metadata=mcp_params.metadata if mcp_params.metadata is not None else None,
         )
 
         # Initialize usage with a default UsageStats object
@@ -384,27 +391,23 @@ class McpClient(BaseProviderModel):
 
         # 5. Call MCP using send_request
         self.logger.debug(f"Sending createMessage request to MCP: {mcp_request_params}")
+    
         try:
             # --- MODIFICATION START ---
             # 1. Create an instance of the specific request type
+            self.logger.debug(f"MCP Request Params object: {mcp_request_params}")
+            self.logger.debug(f"MCP Request Params type: {type(mcp_request_params)}")
             create_message_req_instance = types.CreateMessageRequest(
-                method="sampling/createMessage",
+                method="sampling/createMessage", # Provide the required method name
                 params=mcp_request_params
             )
+            self.logger.debug(f"Created CreateMessageRequest instance: {create_message_req_instance}")
 
-            # 1a. Dump the instance to a dictionary suitable for validation
-            # Use mode='json' and by_alias=True to match how it might be serialized.
-            create_message_req_dict = create_message_req_instance.model_dump(mode='json', by_alias=True)
-            self.logger.debug(f"Serialized CreateMessageRequest to dict: {create_message_req_dict}")
-
-            # 2. Create the ClientRequest RootModel by passing the dictionary to the 'root' argument
-            # This might allow Pydantic's internal discrimination logic to work better.
-            mcp_request_object = types.ClientRequest(root=create_message_req_dict)
-
-            # 3. Use send_request with the validated ClientRequest object and expected result type
+            # 2. Pass the SPECIFIC request instance directly to send_request
+            # The ClientSession likely handles wrapping/serialization internally.
             result: types.CreateMessageResult = await self._session.send_request(
-                mcp_request_object,
-                types.CreateMessageResult # Tell send_request what kind of result to expect
+                create_message_req_instance, # Pass the specific request object
+                types.CreateMessageResult    # Still tell send_request what result type to expect
             )
             # --- MODIFICATION END ---
 
@@ -415,28 +418,48 @@ class McpClient(BaseProviderModel):
              self.logger.error(f"MCP Error during createMessage: {mcp_err.error}", exc_info=True)
              # You might want to map McpError codes to Ember exceptions
              raise ProviderAPIError(f"MCP request failed: {mcp_err.error.message}") from mcp_err
-        # Handle Pydantic validation errors specifically during request creation
+        # Handle Pydantic validation errors specifically (might occur during instance creation now)
         except ValidationError as val_err:
-             self.logger.error(f"Pydantic validation error creating MCP request: {val_err}", exc_info=True)
+             self.logger.error(f"Pydantic validation error creating CreateMessageRequest: {val_err}", exc_info=True)
              raise ModelProviderError(f"Internal error creating MCP request structure: {val_err}") from val_err
         except Exception as e:
-             # Catch other potential errors during the request
+             # Catch other potential errors during the request/send_request call
              self.logger.error(f"Unexpected error during MCP createMessage call: {e}", exc_info=True)
              raise ModelProviderError(f"Failed to send message via MCP: {e}") from e
 
-
         # --- Start of post-call processing ---
-        # (Optional: Add a new try...except here if needed for result processing errors)
+        # (Ensure the rest of the method correctly uses the 'result' variable)
         try:
-            if not isinstance(result.content, types.TextContent):
-                 raise ModelProviderError(f"Received non-text content from MCP: {type(result.content)}")
+            # Extract relevant data from the MCP result
+            # Assuming result.message.content is the primary text response
+            # Need to handle potential variations in result structure
+            response_content = ""
+            if result.message and result.message.content:
+                 # Assuming TextContent or similar structure
+                 if isinstance(result.message.content, types.TextContent):
+                     response_content = result.message.content.text
+                 elif isinstance(result.message.content, list): # Handle list of content blocks if applicable
+                     # Simple concatenation for now, might need refinement
+                     response_content = " ".join(
+                         block.text for block in result.message.content if isinstance(block, types.TextContent)
+                     )
+                 else:
+                     # Fallback or log warning if content structure is unexpected
+                     self.logger.warning(f"Unexpected MCP response content type: {type(result.message.content)}")
+                     response_content = str(result.message.content) # Best effort string conversion
 
-            # 7. Format Response
+            # Placeholder for usage stats - MCP might provide these differently
+            # Initialize UsageStats with default values
+            usage = UsageStats()
+            # TODO: Map any usage/token info from result.metadata or elsewhere if available
+
+            # Construct the Ember ChatResponse
             return ChatResponse(
-                data=result.content.text,
+                model=self.model_info.id,
+                data=response_content,
                 usage=usage, # Pass the initialized UsageStats object
                 raw_output=result.model_dump(), # Store raw MCP response
-                provider_params=mcp_params.model_dump(),
+                provider_params=mcp_params.model_dump(), # Store the params we sent
             )
         except Exception as processing_error:
             # Handle errors during response processing specifically
