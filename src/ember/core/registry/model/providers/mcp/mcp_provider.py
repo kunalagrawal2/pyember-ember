@@ -70,11 +70,10 @@ class McpClient(BaseProviderModel):
     def __init__(self, model_info: ModelInfo, model: Optional[BaseProviderModel] = None):
         """
         Initializes the McpProvider.
-
+        
         Args:
             model_info: Information about the specific MCP model/server.
-                        We'll need to define how server command/args are passed,
-                        perhaps via model_info.provider.config or similar.
+            model: Optional model instance to use
         """
         # Call BaseProviderModel's __init__ AFTER setting up _server_params
         # because create_client might theoretically depend on it, even if
@@ -119,6 +118,13 @@ class McpClient(BaseProviderModel):
         self._stdio_client = None
         self._read = None
         self._write = None
+
+        # Will be determined after initialization based on server capabilities
+        self._server_capabilities = None
+        self._use_sampling_api = False
+        self._use_prompts_api = False
+        self._prompt_names = []  # Will store available prompt names if using prompts API
+        self._prompt_details = {}  # Will store prompt details
 
     #TODO Super Jank work around
     def create_client(self) -> Any:
@@ -174,20 +180,74 @@ class McpClient(BaseProviderModel):
             )
             self.logger.info(f"Server initialized with capabilities: {init_result}")
 
+            # After server initialization, examine capabilities in more detail
+            self.logger.info(f"Server capabilities detail: {init_result.capabilities}")
+            if hasattr(init_result.capabilities, 'prompts'):
+                self.logger.info(f"Prompts capability: {init_result.capabilities.prompts}")
+            # Look for any endpoint information in the capabilities
+
             # Send initialized notification
             self.logger.debug("Sending initialized notification...")
+            initialized_notification = types.InitializedNotification(
+                method="notifications/initialized"
+            )
             await self._session.send_notification(
                 types.ClientNotification(
-                    types.InitializedNotification(method="notifications/initialized")
+                    root=initialized_notification  # Add the root structure
                 )
             )
             
             self.logger.info("MCP session fully initialized and ready")
 
+            # After initialization, based on server capabilities:
+            self._analyze_server_capabilities(init_result)
+
+            # If prompts API is available, fetch available prompts
+            if self._use_prompts_api:
+                try:
+                    list_prompts_request = types.ListPromptsRequest(
+                        method="prompts/list",
+                        params=None
+                    )
+                    prompts_result = await self._session.send_request(
+                        list_prompts_request, 
+                        types.ListPromptsResult
+                    )
+                    self._prompt_names = [prompt.name for prompt in prompts_result.prompts]
+                    self._prompt_details = {prompt.name: prompt for prompt in prompts_result.prompts}
+                    self.logger.info(f"Available prompts: {self._prompt_names}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to fetch available prompts: {e}")
+                    self._prompt_names = []
+                    self._prompt_details = {}
+
         except Exception as e:
             self.logger.error(f"Failed to initialize MCP session: {str(e)}", exc_info=True)
             await self.terminate()
             raise ModelProviderError(f"MCP session initialization failed: {e}") from e
+
+    def _analyze_server_capabilities(self, init_result: types.InitializeResult) -> None:
+        """Analyze server capabilities and set appropriate flags."""
+        self._server_capabilities = init_result.capabilities
+        
+        # Log detailed capabilities for debugging
+        self.logger.info(f"Server info: {init_result.serverInfo}")
+        self.logger.info(f"Server capabilities: {init_result.capabilities}")
+        
+        # Check for sampling API support
+        if hasattr(init_result.capabilities, 'sampling') and init_result.capabilities.sampling:
+            self.logger.info("Server supports sampling API")
+            self._use_sampling_api = True
+        
+        # Check for prompts API support
+        if hasattr(init_result.capabilities, 'prompts') and init_result.capabilities.prompts:
+            self.logger.info("Server supports prompts API")
+            self._use_prompts_api = True
+            # Optionally fetch available prompts immediately
+            # This could be done asynchronously in initialize_session
+        
+        if not (self._use_sampling_api or self._use_prompts_api):
+            self.logger.warning("Server doesn't support sampling or prompts APIs")
 
     # --- Implement BaseProviderModel abstract methods ---
 
@@ -272,16 +332,11 @@ class McpClient(BaseProviderModel):
 
         # 3. Convert Ember ChatRequest to MCP message format
         mcp_messages: List[types.SamplingMessage] = []
-        system_prompt_text: Optional[str] = None # Variable to hold system prompt
+        system_prompt_text: Optional[str] = "You are a helpful AI assistant. Please provide clear and accurate responses." # Default system prompt
 
-        # Extract context if it exists, but DON'T add it to mcp_messages here
+        # Extract context if it exists, override default system prompt
         if request.context:
             system_prompt_text = request.context
-
-        # Add previous messages if any (ensure they are user/assistant)
-        # for msg in request.history:
-        #     if msg.role in ("user", "assistant"): # Filter roles if necessary
-        #         mcp_messages.append(types.SamplingMessage(role=msg.role, content=types.TextContent(type="text", text=msg.content)))
 
         # Add the current user prompt
         mcp_messages.append(types.SamplingMessage(role="user", content=types.TextContent(type="text", text=request.prompt)))
@@ -314,39 +369,121 @@ class McpClient(BaseProviderModel):
         self.logger.debug(f"Sending createMessage request to MCP: {mcp_request_params}")
     
         try:
-            # --- MODIFICATION START ---
-            # 1. Create an instance of the specific request type
-            self.logger.debug(f"MCP Request Params object: {mcp_request_params}")
-            self.logger.debug(f"MCP Request Params type: {type(mcp_request_params)}")
-            create_message_req_instance = types.CreateMessageRequest(
-                method="sampling/createMessage", # Provide the required method name
-                params=mcp_request_params
-            )
-            self.logger.debug(f"Created CreateMessageRequest instance: {create_message_req_instance}")
+            # Select API based on server capabilities
+            result = None
+            
+            # Try sampling API if available
+            if self._use_sampling_api:
+                self.logger.info("Using sampling API")
+                try:
+                    create_message_req_instance = types.CreateMessageRequest(
+                        method="sampling/createMessage",
+                        params=mcp_request_params
+                    )
+                    result = await self._session.send_request(
+                        create_message_req_instance, 
+                        types.CreateMessageResult
+                    )
+                    # Process result for sampling API
+                    return self._create_chat_response_from_sampling_result(result, request)
+                except Exception as e:
+                    self.logger.warning(f"Sampling API request failed: {e}")
+                    # If sampling fails and prompts API is available, fall back
+                    if not self._use_prompts_api:
+                        raise
+            
+            # Use prompts API if available (or as fallback)
+            if self._use_prompts_api:
+                self.logger.info("Using prompts API")
+                
+                # First check if we have any prompts, if not, try to fetch them
+                if not hasattr(self, '_prompt_names') or not self._prompt_names:
+                    try:
+                        list_prompts_request = types.ListPromptsRequest(
+                            method="prompts/list",
+                            params=None
+                        )
+                        prompts_result = await self._session.send_request(
+                            list_prompts_request, 
+                            types.ListPromptsResult
+                        )
+                        self._prompt_names = [prompt.name for prompt in prompts_result.prompts]
+                        self._prompt_details = {prompt.name: prompt for prompt in prompts_result.prompts}
+                        self.logger.info(f"Available prompts: {self._prompt_names}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch prompts list: {e}")
+                        self._prompt_names = []
+                        self._prompt_details = {}
+                
+                # If we don't have any prompts, we can't continue
+                if not self._prompt_names:
+                    raise ModelProviderError("No prompts available on server")
+                
+                # Use prompt specified in model_info.provider.custom_args if available
+                custom_prompt = None
+                if hasattr(self.model_info, 'provider') and hasattr(self.model_info.provider, 'custom_args'):
+                    custom_prompt = self.model_info.provider.custom_args.get('prompt_name')
+                
+                # Determine which prompt to use
+                prompt_name = None
+                if custom_prompt and custom_prompt in self._prompt_names:
+                    # Use the custom prompt from model_info if available
+                    prompt_name = custom_prompt
+                    self.logger.info(f"Using configured prompt '{prompt_name}'")
+                else:
+                    # Otherwise, use the first available prompt
+                    prompt_name = self._prompt_names[0]
+                    self.logger.info(f"Using default prompt '{prompt_name}'")
+                
+                # Determine appropriate arguments based on prompt schema if possible
+                prompt_args = {"input": request.prompt}  # Default fallback
+                
+                # Check if we have prompt details that might help with argument names
+                if prompt_name in self._prompt_details:
+                    prompt = self._prompt_details[prompt_name]
+                    # If the prompt has defined argument schemas, try to match them
+                    if hasattr(prompt, 'arguments') and prompt.arguments:
+                        # Look for common argument names in the schema
+                        arg_names = [arg.name for arg in prompt.arguments]
+                        
+                        # Try common input argument names
+                        common_input_names = ["input", "message", "prompt", "query", "text", "user_input"]
+                        for arg_name in common_input_names:
+                            if arg_name in arg_names:
+                                prompt_args = {arg_name: request.prompt}
+                                self.logger.debug(f"Using '{arg_name}' as prompt input argument")
+                                break
+                
+                # Create prompt request with the best arguments we can determine
+                try:
+                    # Create prompt request
+                    prompt_request = types.GetPromptRequest(
+                        method="prompts/get",
+                        params=types.GetPromptRequestParams(
+                            name=prompt_name,
+                            arguments=prompt_args
+                        )
+                    )
+                    
+                    # Send the request and get the result
+                    result = await self._session.send_request(
+                        prompt_request, 
+                        types.GetPromptResult
+                    )
+                    
+                    # Process result from prompt API
+                    return self._create_chat_response_from_prompt_result(result, request)
+                except Exception as e:
+                    self.logger.error(f"Prompt API request failed: {e}")
+                    raise ModelProviderError(f"Failed to get response from prompt '{prompt_name}': {e}")
+            
+            # If we reach here, neither sampling nor prompts API worked
+            raise ModelProviderError("Server doesn't support compatible APIs")
 
-            # 2. Pass the SPECIFIC request instance directly to send_request
-            # The ClientSession likely handles wrapping/serialization internally.
-            # --- MODIFICATION START ---
-            self.logger.info("Attempting to send request via ClientSession.send_request...")
-            # --- MODIFICATION END ---
-
-            result: types.CreateMessageResult = await self._session.send_request(
-                create_message_req_instance, # Pass the specific request object
-                types.CreateMessageResult    # Still tell send_request what result type to expect
-            )
-            # --- MODIFICATION START ---
-            self.logger.info("ClientSession.send_request completed.")
-            # --- MODIFICATION END ---
-            # --- MODIFICATION END ---
-
-            self.logger.debug(f"Received createMessage result from MCP: {result}")
-
-        # Add specific error handling for MCP errors if needed
         except McpError as mcp_err:
              self.logger.error(f"MCP Error during createMessage: {mcp_err.error}", exc_info=True)
              # You might want to map McpError codes to Ember exceptions
              raise ProviderAPIError(f"MCP request failed: {mcp_err.error.message}") from mcp_err
-        # Handle Pydantic validation errors specifically (might occur during instance creation now)
         except ValidationError as val_err:
              self.logger.error(f"Pydantic validation error creating CreateMessageRequest: {val_err}", exc_info=True)
              raise ModelProviderError(f"Internal error creating MCP request structure: {val_err}") from val_err
@@ -355,46 +492,46 @@ class McpClient(BaseProviderModel):
              self.logger.error(f"Unexpected error during MCP createMessage call: {e}", exc_info=True)
              raise ModelProviderError(f"Failed to send message via MCP: {e}") from e
 
-        # --- Start of post-call processing ---
-        # (Ensure the rest of the method correctly uses the 'result' variable)
-        try:
-            # Extract relevant data from the MCP result
-            # Assuming result.message.content is the primary text response
-            # Need to handle potential variations in result structure
-            response_content = ""
-            if result.message and result.message.content:
-                 # Assuming TextContent or similar structure
-                 if isinstance(result.message.content, types.TextContent):
-                     response_content = result.message.content.text
-                 elif isinstance(result.message.content, list): # Handle list of content blocks if applicable
-                     # Simple concatenation for now, might need refinement
-                     response_content = " ".join(
-                         block.text for block in result.message.content if isinstance(block, types.TextContent)
-                     )
-                 else:
-                     # Fallback or log warning if content structure is unexpected
-                     self.logger.warning(f"Unexpected MCP response content type: {type(result.message.content)}")
-                     response_content = str(result.message.content) # Best effort string conversion
-
-            # Placeholder for usage stats - MCP might provide these differently
-            # Initialize UsageStats with default values
-            usage = UsageStats()
-            # TODO: Map any usage/token info from result.metadata or elsewhere if available
-
-            # Construct the Ember ChatResponse
+    def _create_chat_response_from_sampling_result(
+        self, result: types.CreateMessageResult, request: ChatRequest
+    ) -> ChatResponse:
+        """Convert sampling API result to ChatResponse."""
+        if hasattr(result.content, "text"):
             return ChatResponse(
-                model=self.model_info.id,
-                data=response_content,
-                usage=usage, # Pass the initialized UsageStats object
-                raw_output=result.model_dump(), # Store raw MCP response
-                provider_params=mcp_params.model_dump(), # Store the params we sent
+                data=result.content.text,
+                model=f"{self.model_info.id}/{result.model}",
+                raw=result,
+                usage=UsageStats(),  # Fill with actual usage if available
+                request=request
             )
-        except Exception as processing_error:
-            # Handle errors during response processing specifically
-            self.logger.error(f"Error processing MCP response: {processing_error}", exc_info=True)
-            # Decide how to handle processing errors - maybe raise a different error type?
-            raise ModelProviderError(f"Failed to process MCP response: {processing_error}") from processing_error
-        # --- End of post-call processing ---
+        raise ModelProviderError("Unexpected result format from sampling API")
+
+    def _create_chat_response_from_prompt_result(
+        self, result: types.GetPromptResult, request: ChatRequest
+    ) -> ChatResponse:
+        """Convert prompt API result to ChatResponse."""
+        # Extract assistant message from result.messages
+        for message in result.messages:
+            if message.role == "assistant" and hasattr(message.content, "text"):
+                return ChatResponse(
+                    data=message.content.text,
+                    model=self.model_info.id,  # Prompt API might not provide model info
+                    raw=result,
+                    usage=UsageStats(),  # Fill with actual usage if available
+                    request=request
+                )
+        
+        # If no assistant message found, use last message or concatenate all
+        if result.messages and hasattr(result.messages[-1].content, "text"):
+            return ChatResponse(
+                data=result.messages[-1].content.text,
+                model=self.model_info.id,
+                raw=result,
+                usage=UsageStats(),
+                request=request
+            )
+        
+        raise ModelProviderError("No text content found in prompt result")
 
     async def terminate(self) -> None:
         """
