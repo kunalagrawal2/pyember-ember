@@ -89,8 +89,9 @@ def setup_registry_and_models() -> ModelRegistry:
             # NO wrapped_model_id here - we modify the instance later
             custom_args={
                 "command": mcp_command,
-                "args": mcp_args, # Pass as string or list
-                # Add "env": {'VAR': 'value'} or json string if needed
+                "args": mcp_args,  # script path (string) or list of args
+                # run unbuffered so stdio-based protocol isn't blocked by Python buffering
+                "env": json.dumps({"PYTHONUNBUFFERED": "1"}),
             }
         ),
     )
