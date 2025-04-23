@@ -107,7 +107,7 @@ class McpClient(BaseProviderModel):
         # Now call the base class __init__ which will call our create_client
         super().__init__(model_info)
 
-        self._model = model
+        self._model = model #Can be none for now
 
         # Initialize async-related state
         self._session = None
@@ -151,6 +151,10 @@ class McpClient(BaseProviderModel):
         self.logger.debug(f"Initialized client capabilities with sampling support: {self._client_capabilities}")
         
         return None
+    
+    def set_wrapped_model(self, model: BaseProviderModel) -> None:
+        self.logger.debug(f"Setting wrapped model: {model.model_info.id}")
+        self._model = model
     
 
     async def initialize_session(self) -> None:
@@ -234,6 +238,7 @@ class McpClient(BaseProviderModel):
                     self._prompt_names = []
                     self._prompt_details = {}
 
+                #TODO Refactor to in built functions in ClientSession
                 # If tools API is available, fetch available tools
                 if hasattr(self._server_capabilities, 'tools') and self._server_capabilities.tools:
                     try:
@@ -351,191 +356,199 @@ class McpClient(BaseProviderModel):
             # Re-raise as ValidationError or a more specific custom error if desired
             # Raising ProviderAPIError here might also be valid depending on desired error hierarchy
             raise ValidationError(f"Parameter validation failed for {param_class.__name__}: {e}") from e
+        
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        # retry_error_cls=ProviderAPIError, # Removed
-        reraise=True,
-    )
+    # Will use this method for the agent to determine to use tools, read resources, etc. Used in forward
+    # Just using tools for now
+    async def process_query(self, query: str) -> str:
+        """
+        Process a query using MCP with automatic tool handling.
+        
+        Args:
+            query: The user's text query
+            
+        Returns:
+            A string containing the final response, including tool usage info
+        """
+        # Ensure session is initialized
+        if not hasattr(self, '_session') or self._session is None:
+            await self.initialize_session()
+        
+        final_text = []
+        
+        try:
+            # 1. Get available tools from MCP server using the existing method
+            available_tools = []
+            if hasattr(self._server_capabilities, 'tools') and self._server_capabilities.tools:
+                try:
+                    available_tools = await self.list_tools()
+                    self.logger.info(f"Available tools: {[tool.name for tool in available_tools]}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to fetch available tools: {e}")
+                    available_tools = []
+            
+            # 2. Prepare the system prompt to inform the model about available tools
+            tool_instructions = ""
+            if available_tools:
+                tool_descriptions = []
+                for tool in available_tools:
+                    tool_descriptions.append(f"{tool.name}: {tool.description}")
+                
+                tool_instructions = f"""
+                The following tools are available. If you need to use a tool, respond with:
+                Call tool: tool_name(param1=value1, param2=value2)
+                
+                Available tools:
+                {"".join(tool_descriptions)}
+                """.strip('\n')
+        
+
+            # Create the ChatRequest with proper provider_params
+            chat_request = ChatRequest(
+                prompt=query,
+                context=tool_instructions if tool_instructions else None,
+            )
+            print(f"Chat Request: {chat_request}")
+            # 4. Send initial request to the model through MCP
+           
+            response = self._model.forward(chat_request) # model forwards aren't async
+            
+            final_text.append(response.data)
+            
+            # 5. Check if the response contains tool calls
+            tool_calls = self._extract_tool_calls(response.data)
+            
+            # 6. Process tool calls if any
+            if tool_calls and available_tools:
+                for tool_call in tool_calls:
+                    tool_name = tool_call["name"]
+                    tool_args = tool_call["args"]
+                    
+                    self.logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+                    final_text.append(f"\n[Calling tool: {tool_name}]")
+
+                    #Just with tools for now
+                    # Execute the tool using existing method
+                    try:
+                        tool_result = await self.call_tool(tool_name, tool_args)
+                        
+                        # Format the tool result for display
+                        if isinstance(tool_result, list):
+                            # Handle content list if returned
+                            tool_output = "\n".join([str(item) for item in tool_result])
+                        else:
+                            tool_output = str(tool_result)
+                        
+                        final_text.append(f"[Tool result: {tool_output}]")
+                        
+                        # Send follow-up with tool results
+                        followup_prompt = f"""
+                        Previous query: {query}
+                        Previous response: {response.data}
+                        
+                        Tool call: {tool_name}({', '.join([f'{k}={v}' for k, v in tool_args.items()])})
+                        Tool result: {tool_output}
+                        
+                        Please provide your final answer based on this tool result.
+                        """
+                        
+                        # Process the follow-up through the appropriate channel
+                        if self._model:
+                            followup_response = await self._model.forward(ChatRequest(prompt=followup_prompt))
+                        
+                        final_text.append(followup_response.data)
+                        
+                    except Exception as e:
+                        error_msg = f"Error calling tool {tool_name}: {str(e)}"
+                        self.logger.error(error_msg)
+                        final_text.append(f"[{error_msg}]")
+            
+            return "".join(final_text)
+            
+        except Exception as e:
+            error_msg = f"Error in process_query: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return f"Error processing your query: {error_msg}"
+
+    def _extract_tool_calls(self, text: str) -> list:
+        """
+        Extract tool calls from model response text.
+        
+        Args:
+            text: Response text from the model
+            
+        Returns:
+            List of tool call dictionaries with name and args
+        """
+        tool_calls = []
+        
+        import re
+        # Match "Call tool: tool_name(param1=value1, param2=value2)"
+        pattern = r"Call tool->\s*(\w+)\s*\((.*?)\)"
+        matches = re.findall(pattern, text)
+        
+        for match in matches:
+            tool_name = match[0]
+            args_str = match[1]
+            
+            # Parse arguments string into a dictionary
+            args = {}
+            for arg_pair in args_str.split(','):
+                if '=' in arg_pair:
+                    key, value = arg_pair.split('=', 1)
+                    args[key.strip()] = value.strip().strip('"\'')  # Remove quotes if present
+            
+            tool_calls.append({"name": tool_name, "args": args})
+        
+        return tool_calls
+
     async def forward(
         self, request: ChatRequest, params: Optional[ProviderParams] = None
     ) -> ChatResponse:
         """
-        Processes a chat request using the initialized MCP session.
+        Processes a chat request through the MCP provider or its underlying model.
+        
+        Args:
+            request: The chat request containing the prompt and parameters
+            params: Optional provider-specific parameters
+            
+        Returns:
+            ChatResponse: The response from processing the request
         """
-        # Set up client capabilities, just sampling for now
-        self.create_client()
-
-        if not self._session:
-            # Attempt to initialize if not already done
-            self.logger.warning("MCP session not initialized. Attempting initialization...")
-            await self.initialize_session()
-            if not self._session: # Check again after attempt
-                 raise ModelProviderError("MCP session is not initialized. Cannot forward request.")
-
-        # 1. Prepare Parameters
-        mcp_params: McpChatParameters = self._prepare_params(request, params, McpChatParameters)
-
-        # 2. Validate Request
-        self._validate_request(request, mcp_params)
-
-        # 3. Convert Ember ChatRequest to MCP message format
-        mcp_messages: List[types.SamplingMessage] = []
-        system_prompt_text: Optional[str] = None
-
-        # Extract context if it exists, override default system prompt
-        if request.context:
-            system_prompt_text = request.context
-
-        # Add the current user prompt
-        mcp_messages.append(types.SamplingMessage(role="user", content=types.TextContent(type="text", text=request.prompt)))
-
-        self.logger.debug(f"mcp_messages: {mcp_messages}")
-        self.logger.debug(f"system_prompt_text: {system_prompt_text}")
-
-        # Check if max_tokens is available and required
-        if mcp_params.max_tokens is None:
-            # setting a default
-            mcp_params.max_tokens = 1024 #TODO What should the default be?
-
-        # 4. Prepare MCP Request Parameters object
-        mcp_request_params = types.CreateMessageRequestParams(
-            # Required fields
-            messages=mcp_messages,
-            maxTokens=mcp_params.max_tokens,
-
-            # Optional fields explicitly set
-            systemPrompt=system_prompt_text,
-            temperature=mcp_params.temperature if mcp_params.temperature is not None else None,
-            stopSequences=mcp_params.stop_sequences if mcp_params.stop_sequences else None,
-            metadata=mcp_params.metadata if mcp_params.metadata is not None else None,
-        )
-
-
-        # 5. Call MCP using send_request
-        self.logger.debug(f"Sending createMessage request to MCP: {mcp_request_params}")
-    
-        try:
-            # Select API based on server capabilities
-            result = None
-            
-            # Try sampling API if available
-            if hasattr(self._server_capabilities, 'sampling') and self._server_capabilities.sampling:
-                self.logger.info("Using sampling API")
-                try:
-                    create_message_req_instance = types.CreateMessageRequest(
-                        method="sampling/createMessage",
-                        params=mcp_request_params
-                    )
-                    result = await self._session.send_request(
-                        create_message_req_instance, 
-                        types.CreateMessageResult
-                    )
-                    # Process result for sampling API
-                    return self._create_chat_response_from_sampling_result(result, request)
-                except Exception as e:
-                    self.logger.warning(f"Sampling API request failed: {e}, trying prompts API next")
-                    # Fall through to prompts API
-            
-            # Use prompts API if available (or as fallback)
-            if hasattr(self._server_capabilities, 'prompts') and self._server_capabilities.prompts:
-                self.logger.info("Using prompts API")
-                
-                # First check if we have any prompts, if not, try to fetch them
-                if not hasattr(self, '_prompt_names') or not self._prompt_names:
-                    try:
-                        list_prompts_request = types.ListPromptsRequest(
-                            method="prompts/list",
-                            params=None
+        # Check if we have an underlying model
+        print(f"Checking Model ID: {self._model.model_info.id}")
+        if self._model is None:
+            raise ModelProviderError("No underlying model provided")
+        else:
+            try:
+                # If we have a wrapped model but need tool capabilities, use process_query
+                if hasattr(self, '_server_capabilities') and self._server_capabilities:
+                    has_tools = (hasattr(self._server_capabilities, 'tools') and 
+                                self._server_capabilities.tools)
+                                
+                    # If the MCP server has tools, use our process_query method to handle tool calls
+                    if has_tools:
+                        self.logger.info("Using process_query to handle potential tool usage")
+                        result_text = await self.process_query(request.prompt)
+                        return ChatResponse(
+                            data=result_text,
+                            model_id=self.model_info.id
                         )
-                        prompts_result = await self._session.send_request(
-                            list_prompts_request, 
-                            types.ListPromptsResult
-                        )
-                        self._prompt_names = [prompt.name for prompt in prompts_result.prompts]
-                        self._prompt_details = {prompt.name: prompt for prompt in prompts_result.prompts}
-                        self.logger.info(f"Available prompts: {self._prompt_names}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to fetch prompts list: {e}")
-                        self._prompt_names = []
-                        self._prompt_details = {}
-                
-                # If we don't have any prompts, we can't continue
-                if not self._prompt_names:
-                    raise ModelProviderError("No prompts available on server")
-                
-                # Use prompt specified in model_info.provider.custom_args if available
-                custom_prompt = None
-                if hasattr(self.model_info, 'provider') and hasattr(self.model_info.provider, 'custom_args'):
-                    custom_prompt = self.model_info.provider.custom_args.get('prompt_name')
-                
-                # Determine which prompt to use
-                prompt_name = None
-                if custom_prompt and custom_prompt in self._prompt_details:
-                    # Use the custom prompt from model_info if available
-                    prompt_name = custom_prompt
-                    self.logger.info(f"Using configured prompt '{prompt_name}'")
-                else:
-                    # Otherwise, use the first available prompt
-                    prompt_name = self._prompt_names[0]
-                    self.logger.info(f"Using default prompt '{prompt_name}'")
-                
-                # Determine appropriate arguments based on prompt schema if possible
-                prompt_args = {"input": request.prompt}  # Default fallback
-                
-                # Check if we have prompt details that might help with argument names
-                if prompt_name in self._prompt_details:
-                    prompt = self._prompt_details[prompt_name]
-                    # If the prompt has defined argument schemas, try to match them
-                    if hasattr(prompt, 'arguments') and prompt.arguments:
-                        # Look for common argument names in the schema
-                        arg_names = [arg.name for arg in prompt.arguments]
-                        
-                        # Try common input argument names
-                        common_input_names = ["input", "message", "prompt", "query", "text", "user_input"]
-                        for arg_name in common_input_names:
-                            if arg_name in arg_names:
-                                prompt_args = {arg_name: request.prompt}
-                                self.logger.debug(f"Using '{arg_name}' as prompt input argument")
-                                break
-                
-                # Create prompt request with the best arguments we can determine
-                try:
-                    # Create prompt request
-                    prompt_request = types.GetPromptRequest(
-                        method="prompts/get",
-                        params=types.GetPromptRequestParams(
-                            name=prompt_name,
-                            arguments=prompt_args
-                        )
-                    )
                     
-                    # Send the request and get the result
-                    result = await self._session.send_request(
-                        prompt_request, 
-                        types.GetPromptResult
-                    )
-                    # Process result from prompt API
-                    return self._create_chat_response_from_prompt_result(result, request)
-                except Exception as e:
-                    self.logger.error(f"Prompt API request failed: {e}")
-                    raise ModelProviderError(f"Failed to get response from prompt '{prompt_name}': {e}")
-            
-            # If we reach here, neither sampling nor prompts API worked
-            raise ModelProviderError("Server doesn't support compatible APIs for chat")
-
-        except McpError as mcp_err:
-             self.logger.error(f"MCP Error during createMessage: {mcp_err.error}", exc_info=True)
-             # You might want to map McpError codes to Ember exceptions
-             raise ProviderAPIError(f"MCP request failed: {mcp_err.error.message}") from mcp_err
-        except ValidationError as val_err:
-             self.logger.error(f"Pydantic validation error creating CreateMessageRequest: {val_err}", exc_info=True)
-             raise ModelProviderError(f"Internal error creating MCP request structure: {val_err}") from val_err
-        except Exception as e:
-             # Catch other potential errors during the request/send_request call
-             self.logger.error(f"Unexpected error during MCP createMessage call: {e}", exc_info=True)
-             raise ModelProviderError(f"Failed to send message via MCP: {e}") from e
+                    # Otherwise, directly use the wrapped model (bypass MCP protocol)
+                    self.logger.info("Forwarding directly to underlying model")
+                    return await self._model.forward(request)
+                else:
+                    # No server capabilities, so use the wrapped model directly
+                    self.logger.info("No MCP server capabilities, using underlying model directly")
+                    return await self._model.forward(request)
+            except Exception as e:
+                self.logger.error(f"Error using underlying model: {e}", exc_info=True)
+                raise ModelProviderError(f"Forward to underlying model failed: {e}")
+        
+        # No underlying model, use our own implementation via chat method
+        self.logger.info("No underlying model, using MCP provider's own implementation")
+        return await self.chat(request)
 
     def _create_chat_response_from_sampling_result(
         self, result: types.CreateMessageResult, request: ChatRequest

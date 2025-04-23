@@ -62,6 +62,7 @@ def setup_registry_and_models() -> ModelRegistry:
         registry.register_model(
             ModelInfo(
                 id=openai_model_id,
+                name="gpt-4o", # Suggestion: automatically get name from id?
                 provider=ProviderInfo(name="OpenAI")
             )
         )
@@ -103,13 +104,14 @@ def setup_registry_and_models() -> ModelRegistry:
     # Get the MCP model and inject the wrapped model
     #TODO Need a better way rather than injecting
     mcp_model = registry.get_model(mcp_model_id)
-    mcp_model._model = wrapped_model  # Inject wrapped model during setup
+    mcp_model.set_wrapped_model(wrapped_model)  # Inject wrapped model during setup
+
     print(f"Retrieved MCP model and injected underlying model")
 
     print("Registry setup complete.")
     return registry
 
-async def use_prompt():
+async def use_prompt_with_tool():
     """Example 1: Forwarding a request directly to the underlying model."""
     print("\n=== Example 1: Forwarding Request to Underlying Model ===")
     
@@ -119,7 +121,7 @@ async def use_prompt():
             await mcp_model.initialize_session()
         
         # Send a request that will use the underlying model
-        request = ChatRequest(prompt="Hello, please tell me about the Model Control Protocol (MCP).")
+        request = ChatRequest(prompt="Echo this text: 'Hello MCP!'")
         
         print(f"Sending request to underlying model: '{request.prompt}'")
         response = await mcp_model.forward(request)
@@ -134,6 +136,30 @@ async def use_prompt():
     except Exception as e:
         logger.error(f"Error in forward request example: {e}", exc_info=True)
 
+async def use_prompt_without_tool():
+    """Example 1: Forwarding a request directly to the underlying model."""
+    print("\n=== Example 1: Forwarding Request to Underlying Model ===")
+    
+    try:
+        # Initialize session if needed
+        if not hasattr(mcp_model, '_session') or mcp_model._session is None:
+            await mcp_model.initialize_session()
+        
+        # Send a request that will use the underlying model, which shouldn't need a tool call
+        request = ChatRequest(prompt="Tell me about UC Berkeley")
+        
+        print(f"Sending request to underlying model: '{request.prompt}'")
+        response = await mcp_model.forward(request)
+        
+        print("-" * 30)
+        print(f"Response via underlying model:")
+        print(f"  Data: {response.data[:200]}..." if len(response.data) > 200 else f"  Data: {response.data}")
+        if hasattr(response, 'usage') and response.usage:
+            print(f"  Usage: {response.usage}")
+        print("-" * 30)
+        
+    except Exception as e:
+        logger.error(f"Error in forward request example: {e}", exc_info=True)
 
 async def use_tool():
     """Example 2: Using tools provided by the MCP server."""
@@ -215,8 +241,12 @@ async def main():
         registry = setup_registry_and_models()
         
         # Run examples
-        logger.info("Running Example 1: Prompt Usage")
-        await use_prompt()
+        logger.info("Integration Examples")
+        logger.info("Running Example 1: Prompt Usage with tool call")
+        await use_prompt_with_tool()
+        logger.info("Running Example 2: Prompt Usage (no tool call)")
+        await use_prompt_without_tool()
+        logger.info("Direct Examples")
         logger.info("Running Example 2: Tool Usage")
         await use_tool()
         logger.info("Running Example 3: Resource Access")
