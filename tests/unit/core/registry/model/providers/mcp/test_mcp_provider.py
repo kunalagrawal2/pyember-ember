@@ -5,7 +5,7 @@ import asyncio
 from typing import Any, AsyncGenerator
 import pytest
 from pytest_asyncio import fixture as async_fixture # Import the specific decorator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, AsyncMock, patch
 
 # Ember imports
 from ember.core.registry.model.base.schemas.chat_schemas import ChatRequest, ChatResponse
@@ -23,7 +23,7 @@ from ember.core.registry.model.providers.base_provider import BaseProviderModel
 # MCP imports
 from mcp import ClientSession, StdioServerParameters, types
 
-# --- Test Helper Classes (Optional, can use MagicMock directly) ---
+# --- Test Helper Classes (Optional, can use AsyncMock directly) ---
 class DummyMessage:
     def __init__(self, content: str) -> None:
         self.content = content
@@ -67,31 +67,31 @@ def model_info() -> ModelInfo:
     return create_dummy_model_info()
 
 @pytest.fixture
-def mock_wrapped_model() -> MagicMock:
+def mock_wrapped_model() -> AsyncMock:
     """Provides a mock BaseProviderModel to be wrapped by McpClient."""
-    mock_model = MagicMock(spec=BaseProviderModel)
+    mock_model = AsyncMock(spec=BaseProviderModel)
     # Mock methods if the McpClient interacts with the wrapped model directly
     # mock_model.forward = AsyncMock(...)
     return mock_model
 
 @pytest.fixture # This one is synchronous, so @pytest.fixture is fine
-def mock_stdio_client_cm() -> MagicMock:
+def mock_stdio_client_cm() -> AsyncMock:
     """Mocks the stdio_client async context manager instance."""
-    mock_cm = MagicMock()
+    mock_cm = AsyncMock()
     mock_cm.__aenter__ = AsyncMock(return_value=(AsyncMock(spec=asyncio.StreamReader), AsyncMock(spec=asyncio.StreamWriter)))
     mock_cm.__aexit__ = AsyncMock(return_value=None)
     return mock_cm
 
 @async_fixture # Use @pytest_asyncio.fixture (imported as async_fixture)
-async def mock_stdio_client_constructor(mock_stdio_client_cm: MagicMock) -> AsyncGenerator[MagicMock, None]:
+async def mock_stdio_client_constructor(mock_stdio_client_cm: AsyncMock) -> AsyncGenerator[AsyncMock, None]:
     """Patches the stdio_client constructor."""
     with patch("ember.core.registry.model.providers.mcp.mcp_provider.stdio_client", return_value=mock_stdio_client_cm) as mock_constructor:
         yield mock_constructor
 
 @pytest.fixture # Synchronous fixture
-def mock_session_object() -> MagicMock:
+def mock_session_object() -> AsyncMock:
     """Provides a mock ClientSession object (the result of __aenter__)."""
-    mock_session = MagicMock(spec=ClientSession)
+    mock_session = AsyncMock(spec=ClientSession)
     mock_session.initialize = AsyncMock()
     mock_session.create_message = AsyncMock(
         return_value=types.CreateMessageResult(
@@ -105,15 +105,15 @@ def mock_session_object() -> MagicMock:
     return mock_session
 
 @pytest.fixture # Synchronous fixture
-def mock_session_cm(mock_session_object: MagicMock) -> MagicMock:
+def mock_session_cm(mock_session_object: AsyncMock) -> AsyncMock:
     """Provides a mock ClientSession context manager instance."""
-    mock_cm = MagicMock()
+    mock_cm = AsyncMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_session_object)
     mock_cm.__aexit__ = AsyncMock(return_value=None)
     return mock_cm
 
 @async_fixture # Use @pytest_asyncio.fixture
-async def mock_session_constructor(mock_session_cm: MagicMock) -> AsyncGenerator[MagicMock, None]:
+async def mock_session_constructor(mock_session_cm: AsyncMock) -> AsyncGenerator[AsyncMock, None]:
     """Patches the ClientSession constructor."""
     with patch("ember.core.registry.model.providers.mcp.mcp_provider.ClientSession", return_value=mock_session_cm) as mock_constructor:
         yield mock_constructor
@@ -122,9 +122,9 @@ async def mock_session_constructor(mock_session_cm: MagicMock) -> AsyncGenerator
 @async_fixture # Use @pytest_asyncio.fixture for the main async generator fixture
 async def mcp_client_fixture(
     model_info: ModelInfo,
-    mock_wrapped_model: MagicMock,
-    mock_stdio_client_constructor: MagicMock,
-    mock_session_constructor: MagicMock,
+    mock_wrapped_model: AsyncMock,
+    mock_stdio_client_constructor: AsyncMock,
+    mock_session_constructor: AsyncMock,
 ) -> AsyncGenerator[McpClient, None]:
     """Fixture that provides an McpClient instance with mocked dependencies."""
     client = McpClient(model_info, mock_wrapped_model)
@@ -139,7 +139,7 @@ async def mcp_client_fixture(
 
 # --- Test Cases ---
 
-def test_init_success(model_info: ModelInfo, mock_wrapped_model: MagicMock) -> None:
+def test_init_success(model_info: ModelInfo, mock_wrapped_model: AsyncMock) -> None:
     """Test successful initialization with valid config."""
     client = McpClient(model_info, mock_wrapped_model)
     assert client.model_info == model_info
@@ -152,7 +152,7 @@ def test_init_success(model_info: ModelInfo, mock_wrapped_model: MagicMock) -> N
     assert client._session is None
     assert client._model == mock_wrapped_model
 
-def test_init_failure_missing_command(mock_wrapped_model: MagicMock) -> None:
+def test_init_failure_missing_command(mock_wrapped_model: AsyncMock) -> None:
     """Test initialization failure when 'command' is missing."""
     # Create info with custom_args missing the 'command' key
     # Ensure 'args' value is also a string
@@ -171,13 +171,22 @@ async def test_create_client(mcp_client_fixture: McpClient) -> None:
 @pytest.mark.asyncio
 async def test_initialize_session_success(
     mcp_client_fixture: McpClient,
-    mock_stdio_client_constructor: MagicMock,
-    mock_session_constructor: MagicMock,
-    mock_session_object: MagicMock,
+    mock_stdio_client_constructor: AsyncMock,
+    mock_session_constructor: AsyncMock,
+    mock_session_object: AsyncMock,
 ) -> None:
     """Test successful session initialization."""
-    # mcp_client_fixture should now be the McpClient instance
+    # Ensure the mock session object is correctly set up
+    mock_session_object.initialize = AsyncMock(return_value=None)
+    
+    # Ensure _session is None to avoid early return
+    mcp_client_fixture._session = None
+    
+    # Call the method under test
     await mcp_client_fixture.initialize_session()
+
+    # Verify that the initialize method was awaited
+    mock_session_object.initialize.assert_awaited_once()
 
     # Check constructors were called
     mock_stdio_client_constructor.assert_called_once()
@@ -187,19 +196,16 @@ async def test_initialize_session_success(
     mock_stdio_client_constructor.return_value.__aenter__.assert_awaited_once()
     mock_session_constructor.return_value.__aenter__.assert_awaited_once()
 
-    # Check session object methods were awaited
-    mock_session_object.initialize.assert_awaited_once()
-
     # Check internal state
-    assert mcp_client_fixture._session == mock_session_object # Should hold the session object
-    assert mcp_client_fixture._stdio_client is not None # Holds the stdio context manager
+    assert mcp_client_fixture._session == mock_session_object
+    assert mcp_client_fixture._stdio_client is not None
 
 @pytest.mark.asyncio
 async def test_initialize_session_failure(
     mcp_client_fixture: McpClient,
-    mock_stdio_client_cm: MagicMock,
-    mock_session_cm: MagicMock,
-    mock_session_object: MagicMock,
+    mock_stdio_client_cm: AsyncMock,
+    mock_session_cm: AsyncMock,
+    mock_session_object: AsyncMock,
 ) -> None:
     """Test failure during session.initialize()."""
     mock_session_object.initialize.side_effect = Exception("init failed")
@@ -215,7 +221,7 @@ async def test_initialize_session_failure(
     assert mcp_client_fixture._session is None # Should be cleaned up
 
 @pytest.mark.asyncio
-async def test_forward_success(mcp_client_fixture: McpClient, mock_session_object: MagicMock) -> None:
+async def test_forward_success(mcp_client_fixture: McpClient, mock_session_object: AsyncMock) -> None:
     """Test successful forward call (implicitly initializes session)."""
     request = ChatRequest(prompt="Hello MCP", context="System prompt")
     # mcp_client_fixture should now be the McpClient instance
@@ -236,7 +242,7 @@ async def test_forward_success(mcp_client_fixture: McpClient, mock_session_objec
     assert mcp_params.messages[0].content.text == "Hello MCP"
 
 @pytest.mark.asyncio
-async def test_forward_api_call_failure(mcp_client_fixture: McpClient, mock_session_object: MagicMock) -> None:
+async def test_forward_api_call_failure(mcp_client_fixture: McpClient, mock_session_object: AsyncMock) -> None:
     """Test forward when the MCP API call (create_message) fails."""
     await mcp_client_fixture.initialize_session()
     # This mock will now be reached
@@ -260,8 +266,8 @@ async def test_forward_api_call_failure(mcp_client_fixture: McpClient, mock_sess
 @pytest.mark.asyncio
 async def test_terminate_success(
     mcp_client_fixture: McpClient,
-    mock_stdio_client_cm: MagicMock,
-    mock_session_object: MagicMock,
+    mock_stdio_client_cm: AsyncMock,
+    mock_session_object: AsyncMock,
 ) -> None:
     """Test successful termination after initialization."""
     # mcp_client_fixture should now be the McpClient instance
@@ -286,8 +292,8 @@ async def test_terminate_success(
 @pytest.mark.asyncio
 async def test_terminate_failure(
     mcp_client_fixture: McpClient,
-    mock_stdio_client_cm: MagicMock,
-    mock_session_object: MagicMock,
+    mock_stdio_client_cm: AsyncMock,
+    mock_session_object: AsyncMock,
 ) -> None:
     """Test termination when a context exit fails."""
     # mcp_client_fixture should now be the McpClient instance
@@ -307,4 +313,91 @@ async def test_terminate_failure(
 
     # Verify state is reset despite error
     assert mcp_client_fixture._session is None
-    assert mcp_client_fixture._stdio_client is None 
+    assert mcp_client_fixture._stdio_client is None
+
+@pytest.fixture
+def dummy_model_info():
+    return ModelInfo(
+        id="mcp:stdio-echo-server",
+        provider=ProviderInfo(name="MCP", custom_args={"command": "echo", "args": ""})
+    )
+
+@pytest.fixture
+def mcp_client(dummy_model_info):
+    return McpClient(model_info=dummy_model_info)
+
+@pytest.fixture
+def mock_server():
+    return MockServer()
+
+@pytest.mark.asyncio
+async def test_initialize_session(mcp_client, mock_server):
+    """Test the initialization of the MCP session."""
+    with patch.object(mcp_client, '_session', new_callable=AsyncMock) as mock_session:
+        mock_session.initialize = mock_server.initialize
+        await mcp_client.initialize_session()
+        mock_session.initialize.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_list_capabilities(mcp_client, mock_server):
+    """Test listing prompts, tools, and resources from the MCP server."""
+    with patch.object(mcp_client, '_session', new_callable=AsyncMock) as mock_session:
+        mock_session.list_prompts = mock_server.list_prompts
+        mock_session.list_tools = mock_server.list_tools
+        mock_session.list_resources = mock_server.list_resources
+
+        prompts = await mcp_client.list_prompts()
+        tools = await mcp_client.list_tools()
+        resources = await mcp_client.list_resources()
+
+        assert len(prompts) == 1
+        assert prompts[0]["name"] == "test_prompt"
+        assert len(tools) == 1
+        assert tools[0]["name"] == "test_tool"
+        assert len(resources) == 1
+        assert resources[0]["uri"] == "test_resource"
+
+@pytest.mark.asyncio
+async def test_forward_with_no_model(mcp_client):
+    """Test forward method raises error when no underlying model is set."""
+    with pytest.raises(ModelProviderError, match="No underlying model provided"):
+        await mcp_client.forward(ChatRequest(prompt="Test prompt"))
+
+@pytest.mark.asyncio
+async def test_forward_with_model(mcp_client, mock_server):
+    """Test forward method with a mock underlying model."""
+    mock_model = AsyncMock()
+    mock_model.forward = mock_server.create_message
+    mcp_client.set_wrapped_model(mock_model)
+
+    response = await mcp_client.forward(ChatRequest(prompt="Test prompt"))
+    assert response.data == "Test MCP response."
+    mock_model.forward.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_error_handling(mcp_client):
+    """Test error handling when no model is set."""
+    with pytest.raises(ModelProviderError, match="No underlying model provided"):
+        await mcp_client.forward(ChatRequest(prompt="Test prompt"))
+
+# Mock server setup
+class MockServer:
+    def __init__(self):
+        self.prompts = [{"name": "test_prompt"}]
+        self.tools = [{"name": "test_tool"}]
+        self.resources = [{"uri": "test_resource"}]
+
+    async def initialize(self):
+        return {"capabilities": {"prompts": True, "tools": True, "resources": True}}
+
+    async def list_prompts(self):
+        return self.prompts
+
+    async def list_tools(self):
+        return self.tools
+
+    async def list_resources(self):
+        return self.resources
+
+    async def create_message(self, *args, **kwargs):
+        return ChatResponse(data="Test MCP response.")

@@ -6,7 +6,7 @@ This script showcases various capabilities of the MCP (Model Control Protocol) i
 The MCP provider always requires an underlying LLM model inside it.
 
 To run:
-    export OPENAI_API_KEY="your-key"  # Required as MCP provider needs a model
+    export OPENAI_API_KEY="your-key" in .env file # Required as MCP provider needs a model
     uv run python src/ember/examples/integration/basic_mcp_example.py
 
 Requires:
@@ -111,7 +111,7 @@ def setup_registry_and_models() -> ModelRegistry:
     print("Registry setup complete.")
     return registry
 
-async def use_prompt_with_tool():
+async def request_with_tool():
     """Example 1: Forwarding a request directly to the underlying model."""
     print("\n=== Example 1: Forwarding Request to Underlying Model ===")
     
@@ -136,7 +136,7 @@ async def use_prompt_with_tool():
     except Exception as e:
         logger.error(f"Error in forward request example: {e}", exc_info=True)
 
-async def use_prompt_without_tool():
+async def request_without_tool():
     """Example 1: Forwarding a request directly to the underlying model."""
     print("\n=== Example 1: Forwarding Request to Underlying Model ===")
     
@@ -242,14 +242,14 @@ async def main():
         
         # Run examples
         logger.info("Integration Examples")
-        logger.info("Running Example 1: Prompt Usage with tool call")
-        await use_prompt_with_tool()
-        logger.info("Running Example 2: Prompt Usage (no tool call)")
-        await use_prompt_without_tool()
+        logger.info("Running Example 1: MCP Request with intelligent tool call")
+        await request_with_tool()
+        logger.info("Running Example 2: MCP Request (should infer no tool call)")
+        await request_without_tool()
         logger.info("Direct Examples")
-        logger.info("Running Example 2: Tool Usage")
+        logger.info("Running Example 3: Tool Usage")
         await use_tool()
-        logger.info("Running Example 3: Resource Access")
+        logger.info("Running Example 4: Resource Access")
         await access_resource()
         
             
