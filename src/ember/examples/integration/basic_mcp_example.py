@@ -1,28 +1,26 @@
 #!/usr/bin/env python3
 """
-Basic example demonstrating the use of the McpClient provider within Ember,
-structured similarly to model_api_example.py.
+Basic example demonstrating the use of the McpClient provider within Ember.
 
-This script connects to an MCP server (like example_mcp_server.py) via stdio
-and sends a simple chat message through it.
+This script showcases various capabilities of the MCP (Model Control Protocol) integration.
+The MCP provider always requires an underlying LLM model inside it.
 
 To run:
-    # Ensure OPENAI_API_KEY is set if you intend to use OpenAI models elsewhere,
-    # though this specific example doesn't directly call OpenAI.
-    export OPENAI_API_KEY="your-key" 
+    export OPENAI_API_KEY="your-key"  # Required as MCP provider needs a model
     uv run python src/ember/examples/integration/basic_mcp_example.py
 
 Requires:
     - A running Python environment with Ember and MCP dependencies installed.
     - The example_mcp_server.py script available at the specified path.
+    - An OpenAI API key (or other supported model API key)
 """
 
 import asyncio
 import logging
 import os
 import sys
-import json # For potential future use with structured prompts/tool calls
-from typing import Tuple
+import json
+from typing import Optional, Dict, Any, List
 
 # Add project root to sys.path for local development
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -36,43 +34,48 @@ from ember.core.registry.model.base.schemas.provider_info import ProviderInfo
 from ember.core.registry.model.base.schemas.chat_schemas import ChatRequest, ChatResponse
 # Import the McpClient class to ensure its @provider decorator runs
 from ember.core.registry.model.providers.mcp.mcp_provider import McpClient
-# Import OpenAI provider if needed for registration type hints (optional)
-# from ember.core.registry.model.providers.openai.openai_provider import OpenAIProvider
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Global registry for examples to use
+registry = None
+mcp_model = None
+wrapped_model = None
 
 def setup_registry_and_models() -> ModelRegistry:
-    """Initializes the ModelRegistry and registers the MCP and OpenAI models."""
+    """Initializes the ModelRegistry and registers models."""
+    global wrapped_model, mcp_model
+    
     print("\n=== Registry Initialization and MCP Model Setup ===")
     registry = ModelRegistry()
 
-    # --- Register OpenAI Model (Prerequisite for Manual Injection) ---
-    openai_model_id = "openai:gpt-4o" # Or any other valid OpenAI model
+    # --- Register OpenAI Model (Required for MCP) ---
+    openai_model_id = "openai:gpt-4o"
     openai_key = os.environ.get("OPENAI_API_KEY")
 
     if not openai_key:
-        print(f"Warning: OPENAI_API_KEY not set. Cannot register '{openai_model_id}'.")
-    elif not registry.is_registered(openai_model_id):
+        raise ValueError("OPENAI_API_KEY environment variable is required but not set")
+
+    if not registry.is_registered(openai_model_id):
         registry.register_model(
             ModelInfo(
                 id=openai_model_id,
-                provider=ProviderInfo(name="OpenAI") # API key will be picked up from env by default
+                provider=ProviderInfo(name="OpenAI")
             )
         )
         print(f"Registered OpenAI model: {openai_model_id}")
-    else:
-         print(f"Model {openai_model_id} already registered.")
-
+    
+    # Get the OpenAI model first, set it as the wrapped model
+    wrapped_model = registry.get_model(openai_model_id)
+    print(f"Retrieved OpenAI model: {openai_model_id}")
 
     # --- Configuration for McpClient ---
     mcp_model_id = "mcp:stdio-echo-server"
     server_script_path = os.path.join(os.path.dirname(__file__), "example_mcp_server.py")
     python_executable = sys.executable
 
-    logger.debug(f"server script path: {server_script_path}")
     if not os.path.exists(server_script_path):
         logger.error(f"MCP server script not found at: {server_script_path}")
         raise FileNotFoundError(f"MCP server script not found: {server_script_path}")
@@ -80,17 +83,14 @@ def setup_registry_and_models() -> ModelRegistry:
     mcp_command = python_executable
     mcp_args = server_script_path
 
-    # --- Define MCP ModelInfo (WITHOUT wrapping info) ---
-    # We will inject the OpenAI model manually later
+    # --- Define MCP ModelInfo ---
     mcp_model_info = ModelInfo(
         id=mcp_model_id,
         provider=ProviderInfo(
-            name="MCP", # Matches the McpClient's @provider decorator
-            # NO wrapped_model_id here - we modify the instance later
+            name="MCP",
             custom_args={
                 "command": mcp_command,
-                "args": mcp_args,  # script path (string) or list of args
-                # run unbuffered so stdio-based protocol isn't blocked by Python buffering
+                "args": mcp_args,
                 "env": json.dumps({"PYTHONUNBUFFERED": "1"}),
             }
         ),
@@ -98,116 +98,150 @@ def setup_registry_and_models() -> ModelRegistry:
 
     if not registry.is_registered(mcp_model_id):
         registry.register_model(mcp_model_info)
-        print(f"Registered MCP model: {mcp_model_id} (underlying model to be injected manually)")
-    else:
-        print(f"Model {mcp_model_id} already registered.")
-
+        print(f"Registered MCP model: {mcp_model_id}")
+    
+    # Get the MCP model and inject the wrapped model
+    #TODO Need a better way rather than injecting
+    mcp_model = registry.get_model(mcp_model_id)
+    mcp_model._model = wrapped_model  # Inject wrapped model during setup
+    print(f"Retrieved MCP model and injected underlying model")
 
     print("Registry setup complete.")
     return registry
 
-
-async def run_mcp_chat_example(mcp_model: McpClient):
-    """Demonstrates sending a chat message via the provided McpClient instance."""
-    print("\n=== MCP Chat Example ===")
-    model_id = mcp_model.model_info.id # Get ID from the instance if needed for logging
-
-    # No need to call registry.get_model here
-
-    # Add a check to ensure the model was injected (still useful)
-    if not hasattr(mcp_model, '_model') or mcp_model._model is None:
-         logger.error(f"MCP model '{model_id}' received, but its internal '_model' was not set. Injection likely failed.")
-         return
-
-    logger.info(f"Using provided MCP model: {model_id}. Internal model: {mcp_model._model.model_info.id}")
-
-
-    # --- Run a Simple Chat Request ---
-    request = ChatRequest(prompt="Hello MCP server, this is a test via manual injection.")
-
-    logger.info(f"Sending standard chat request to {model_id}: '{request.prompt}'")
+async def use_prompt():
+    """Example 1: Forwarding a request directly to the underlying model."""
+    print("\n=== Example 1: Forwarding Request to Underlying Model ===")
+    
     try:
-        # Forward call now goes through McpClient -> MCP Server -> McpClient.handle_sampling_message -> Injected OpenAI Model
-        response = await mcp_model.forward(request) # Await the async call
-
+        # Initialize session if needed
+        if not hasattr(mcp_model, '_session') or mcp_model._session is None:
+            await mcp_model.initialize_session()
+        
+        # Send a request that will use the underlying model
+        request = ChatRequest(prompt="Hello, please tell me about the Model Control Protocol (MCP).")
+        
+        print(f"Sending request to underlying model: '{request.prompt}'")
+        response = await mcp_model.forward(request)
+        
         print("-" * 30)
-        print(f"Response from {model_id} (via {mcp_model._model.model_info.id}):")
-        print(f"  Data: {response.data}")
-        print(f"  Usage: {response.usage}")
-        print(f"  Raw Output: {response.raw_output}")
+        print(f"Response via underlying model:")
+        print(f"  Data: {response.data[:200]}..." if len(response.data) > 200 else f"  Data: {response.data}")
+        if hasattr(response, 'usage') and response.usage:
+            print(f"  Usage: {response.usage}")
         print("-" * 30)
-
+        
     except Exception as e:
-        logger.error(f"Error during chat request via {model_id}: {e}", exc_info=True)
+        logger.error(f"Error in forward request example: {e}", exc_info=True)
+
+
+async def use_tool():
+    """Example 2: Using tools provided by the MCP server."""
+    print("\n=== Example 2: Using MCP Server Tools ===")
+    
+    try:
+        # Initialize the session if not already done
+        if not hasattr(mcp_model, '_session') or mcp_model._session is None:
+            await mcp_model.initialize_session()
+        
+        # Check if tools capability is available
+        if not hasattr(mcp_model._server_capabilities, 'tools') or not mcp_model._server_capabilities.tools:
+            print("Server doesn't support tools API. Skipping tools example.")
+            return
+            
+        # List available tools
+        print("Listing available tools...")
+        tools = await mcp_model.list_tools()
+        print(f"Found {len(tools)} tools: {[tool.name for tool in tools]}")
+        
+        # Call the echo tool
+        tool_name = "echo_tool"
+        arguments = {"message": "This is a tool test"}
+        
+        print(f"Calling tool '{tool_name}' with arguments: {arguments}")
+        result = await mcp_model.call_tool(tool_name, arguments)
+        
+        print("-" * 30)
+        print(f"Tool result: {result}")
+        print("-" * 30)
+        
+    except Exception as e:
+        logger.error(f"Error in tool usage example: {e}", exc_info=True)
+
+
+async def access_resource():
+    """Example 3: Accessing resources from the MCP server."""
+    print("\n=== Example 3: Accessing MCP Server Resources ===")
+    
+    try:
+        # Initialize the session if not already done
+        if not hasattr(mcp_model, '_session') or mcp_model._session is None:
+            await mcp_model.initialize_session()
+        
+        # Check if resources capability is available
+        if not hasattr(mcp_model._server_capabilities, 'resources') or not mcp_model._server_capabilities.resources:
+            print("Server doesn't support resources API. Skipping resources example.")
+            return
+
+        # List available resources
+        # There should be zero available resources in this example because we have a resource template
+        print("Listing available resources...")
+        resources = await mcp_model.list_resources()
+        print(f"Found {len(resources)} resources: {[resource.name for resource in resources]}")
+            
+        # Access a resource
+        resource_uri = "echo://resource-test"
+        
+        print(f"Requesting resource: {resource_uri}")
+        contents = await mcp_model.read_resource(resource_uri)
+        
+        print("-" * 30)
+        print(f"Resource content: {contents}")
+        print("-" * 30)
+        
+    except Exception as e:
+        logger.error(f"Error in resource access example: {e}", exc_info=True)
+
 
 
 async def main():
-    """Sets up registry, initializes Ember, manually injects model, and runs the MCP example."""
-    openai_key_present = bool(os.environ.get("OPENAI_API_KEY"))
-    if not openai_key_present:
-        print("Warning: OPENAI_API_KEY not set. Needed for registering OpenAI and running the MCP example.")
-        # return # Optional: exit if key is missing
-
-    print("Running Basic MCP Integration Example (with manual model injection)...")
-    openai_model_id = "openai:gpt-4o"
-    mcp_model_id = "mcp:stdio-echo-server"
-    registry = None
-    mcp_model = None # Initialize to None for finally block
-    openai_model = None # Initialize to None
-
+    """Main function to run all examples."""
+    global registry, mcp_model, wrapped_model
+    
+    print("Running MCP Integration Examples...")
+    
     try:
-        # 1. Setup Registry and Models
+        # Setup registry and get models - this already handles wrapping
         registry = setup_registry_and_models()
-
-        # Check if prerequisite models were registered
-        if not openai_key_present or not registry.is_registered(openai_model_id):
-             logger.warning(f"OpenAI Model '{openai_model_id}' was not registered (likely missing API key). Cannot proceed.")
-             return
-        if not registry.is_registered(mcp_model_id):
-             logger.warning(f"MCP Model '{mcp_model_id}' was not registered. Cannot proceed.")
-             return # Exit if MCP model isn't available
-
-        # 2. Get both model instances
-        openai_model = registry.get_model(openai_model_id)
-        mcp_model = registry.get_model(mcp_model_id)
-
-        # 3. Manually Inject OpenAI model
-        logger.info(f"Manually injecting OpenAI model ({openai_model_id}) into MCP model ({mcp_model_id}) instance.")
-        mcp_model._model = openai_model
-        logger.info(f"Injection complete. McpClient instance now references: {mcp_model._model}")
-
-
-        # 4. Run the MCP chat example
-        # CHANGE: Pass the prepared mcp_model instance directly
-        await run_mcp_chat_example(mcp_model)
-
-    except FileNotFoundError as e:
-         # Catch specific setup errors if needed
-         logger.error(f"Setup failed: {e}")
+        
+        # Run examples
+        logger.info("Running Example 1: Prompt Usage")
+        await use_prompt()
+        logger.info("Running Example 2: Tool Usage")
+        await use_tool()
+        logger.info("Running Example 3: Resource Access")
+        await access_resource()
+        
+            
     except Exception as e:
-         logger.exception(f"An error occurred during the main execution: {e}")
+        logger.exception(f"An error occurred: {e}")
     finally:
-        # Ensure termination happens even if errors occur during setup or run
-        # Terminate the MCP model, which should handle its subprocess
+        # Cleanup - terminate MCP model to close subprocess
         if mcp_model:
-            logger.info(f"Ensuring termination of model: {mcp_model_id}")
             try:
-                await mcp_model.terminate() # Await async call
-                logger.info(f"Model {mcp_model_id} terminated successfully.")
+                logger.info(f"Terminating MCP model")
+                await mcp_model.terminate()
+                logger.info(f"MCP model terminated successfully")
             except Exception as term_error:
-                logger.error(f"Error during model termination for {mcp_model_id}: {term_error}", exc_info=True)
-        # Note: We don't typically need to explicitly terminate the OpenAI model unless it holds persistent resources.
+                logger.error(f"Error during model termination: {term_error}")
 
-    logger.info("Example finished.")
+    logger.info("All examples completed")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except FileNotFoundError as e:
-        # This might be caught in main now, but keep for safety
-        logger.error(f"Missing file: {e}")
     except KeyboardInterrupt:
-        logger.info("Example interrupted by user.")
+        logger.info("Examples interrupted by user")
     except Exception as e:
         logger.exception(f"An unexpected error occurred: {e}")

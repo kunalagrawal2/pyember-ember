@@ -1,5 +1,5 @@
 #TODO First making with stdio, will implement SSE later
-from typing import Optional
+from typing import Optional, Tuple
 
 import logging
 from typing import Any, Dict, Final, List, Optional, cast
@@ -89,12 +89,8 @@ class McpClient(BaseProviderModel):
         server_args = server_args_str.split() # Split by space
 
         # Env should ideally be a Dict[str, str], handle if stored differently
-        # If env needs to be passed, it might need JSON stringification/parsing
         # For now, assume env is not passed via custom_args or handled separately
         server_env = None # Simplification: Assume env is not configured via custom_args for now
-        # If env IS needed via custom_args, you'd need:
-        # env_str = provider_config.get("env")
-        # server_env = json.loads(env_str) if env_str else None
 
         if not server_command:
             raise ConfigurationError(
@@ -119,14 +115,22 @@ class McpClient(BaseProviderModel):
         self._read = None
         self._write = None
 
-        # Will be determined after initialization based on server capabilities
+        # MCP Server capabilities
         self._server_capabilities = None
-        self._use_sampling_api = False
-        self._use_prompts_api = False
-        self._prompt_names = []  # Will store available prompt names if using prompts API
-        self._prompt_details = {}  # Will store prompt details
 
-    #TODO Super Jank work around
+        # Ember Client capabilites
+        self._client_capabilities = None
+
+        # Store prompt details 
+        self._prompt_names = []  # Will store available prompt names if prompts API is available
+        self._prompt_details = {}  # Will store prompt details
+        # Store tools
+        self._tool_names = []
+        self._tool_details = {}
+        # Store resources
+        self._resource_uris = []
+        self._resource_details = {}
+
     def create_client(self) -> Any:
         """
         Satisfies the BaseProviderModel requirement for a synchronous client creator.
@@ -136,9 +140,18 @@ class McpClient(BaseProviderModel):
         and returns None. The BaseProviderModel assigns this to self.client.
         """
         self.logger.debug("MCP Provider create_client called (returns None). Session created in initialize_session.")
-        # In the future, could perform some synchronous setup if needed.
-        # For now, the main setup happens in __init__ and initialize_session.
-        return None # The actual session is created asynchronously
+        
+        # Initialize client capabilities with sampling support
+        self._client_capabilities = types.ClientCapabilities(
+            sampling=types.SamplingCapability(),
+            experimental=None,
+            roots=None
+        )
+        
+        self.logger.debug(f"Initialized client capabilities with sampling support: {self._client_capabilities}")
+        
+        return None
+    
 
     async def initialize_session(self) -> None:
         """Initializes the MCP connection and session using context managers."""
@@ -199,11 +212,11 @@ class McpClient(BaseProviderModel):
             
             self.logger.info("MCP session fully initialized and ready")
 
-            # After initialization, based on server capabilities:
-            self._analyze_server_capabilities(init_result)
+            # After initialization, analyze and log server capabilities
+            self._analyze_server_capabilities(init_result) # Just for logging
 
             # If prompts API is available, fetch available prompts
-            if self._use_prompts_api:
+            if hasattr(self._server_capabilities, 'prompts') and self._server_capabilities.prompts:
                 try:
                     list_prompts_request = types.ListPromptsRequest(
                         method="prompts/list",
@@ -221,33 +234,67 @@ class McpClient(BaseProviderModel):
                     self._prompt_names = []
                     self._prompt_details = {}
 
+                # If tools API is available, fetch available tools
+                if hasattr(self._server_capabilities, 'tools') and self._server_capabilities.tools:
+                    try:
+                        list_tools_request = types.ListToolsRequest(
+                            method="tools/list",
+                            params=None
+                        )
+                        tools_result = await self._session.send_request(
+                            list_tools_request, 
+                            types.ListToolsResult
+                        )
+                        self._tool_names = [tool.name for tool in tools_result.tools]
+                        self._tool_details = {tool.name: tool for tool in tools_result.tools}
+                        self.logger.info(f"Available tools: {self._tool_names}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch available tools: {e}")
+                        self._tool_names = []
+                        self._tool_details = {}
+                
+                # If resources API is available, fetch available resources
+                if hasattr(self._server_capabilities, 'resources') and self._server_capabilities.resources:
+                    try:
+                        list_resources_request = types.ListResourcesRequest(
+                            method="resources/list",
+                            params=None
+                        )
+                        resources_result = await self._session.send_request(
+                            list_resources_request, 
+                            types.ListResourcesResult
+                        )
+                        self._resource_uris = [resource.uri for resource in resources_result.resources]
+                        self._resource_details = {resource.uri: resource for resource in resources_result.resources}
+                        self.logger.info(f"Available resources: {self._resource_uris}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to fetch available resources: {e}")
+                        self._resource_uris = []
+                        self._resource_details = {}
+
         except Exception as e:
             self.logger.error(f"Failed to initialize MCP session: {str(e)}", exc_info=True)
             await self.terminate()
             raise ModelProviderError(f"MCP session initialization failed: {e}") from e
 
     def _analyze_server_capabilities(self, init_result: types.InitializeResult) -> None:
-        """Analyze server capabilities and set appropriate flags."""
+        """Analyze and log server capabilities for debugging purposes."""
         self._server_capabilities = init_result.capabilities
         
-        # Log detailed capabilities for debugging
+        # Log detailed server information and capabilities
         self.logger.info(f"Server info: {init_result.serverInfo}")
         self.logger.info(f"Server capabilities: {init_result.capabilities}")
         
-        # Check for sampling API support
-        if hasattr(init_result.capabilities, 'sampling') and init_result.capabilities.sampling:
-            self.logger.info("Server supports sampling API")
-            self._use_sampling_api = True
-        
-        # Check for prompts API support
+        # Log individual capabilities for better visibility in logs
         if hasattr(init_result.capabilities, 'prompts') and init_result.capabilities.prompts:
             self.logger.info("Server supports prompts API")
-            self._use_prompts_api = True
-            # Optionally fetch available prompts immediately
-            # This could be done asynchronously in initialize_session
         
-        if not (self._use_sampling_api or self._use_prompts_api):
-            self.logger.warning("Server doesn't support sampling or prompts APIs")
+        if hasattr(init_result.capabilities, 'tools') and init_result.capabilities.tools:
+            self.logger.info("Server supports tools API")
+        
+        if hasattr(init_result.capabilities, 'resources') and init_result.capabilities.resources:
+            self.logger.info("Server supports resources API")
+        
 
     # --- Implement BaseProviderModel abstract methods ---
 
@@ -317,6 +364,9 @@ class McpClient(BaseProviderModel):
         """
         Processes a chat request using the initialized MCP session.
         """
+        # Set up client capabilities, just sampling for now
+        self.create_client()
+
         if not self._session:
             # Attempt to initialize if not already done
             self.logger.warning("MCP session not initialized. Attempting initialization...")
@@ -332,7 +382,7 @@ class McpClient(BaseProviderModel):
 
         # 3. Convert Ember ChatRequest to MCP message format
         mcp_messages: List[types.SamplingMessage] = []
-        system_prompt_text: Optional[str] = "You are a helpful AI assistant. Please provide clear and accurate responses." # Default system prompt
+        system_prompt_text: Optional[str] = None
 
         # Extract context if it exists, override default system prompt
         if request.context:
@@ -362,8 +412,6 @@ class McpClient(BaseProviderModel):
             metadata=mcp_params.metadata if mcp_params.metadata is not None else None,
         )
 
-        # Initialize usage with a default UsageStats object
-        usage = UsageStats()
 
         # 5. Call MCP using send_request
         self.logger.debug(f"Sending createMessage request to MCP: {mcp_request_params}")
@@ -373,7 +421,7 @@ class McpClient(BaseProviderModel):
             result = None
             
             # Try sampling API if available
-            if self._use_sampling_api:
+            if hasattr(self._server_capabilities, 'sampling') and self._server_capabilities.sampling:
                 self.logger.info("Using sampling API")
                 try:
                     create_message_req_instance = types.CreateMessageRequest(
@@ -387,13 +435,11 @@ class McpClient(BaseProviderModel):
                     # Process result for sampling API
                     return self._create_chat_response_from_sampling_result(result, request)
                 except Exception as e:
-                    self.logger.warning(f"Sampling API request failed: {e}")
-                    # If sampling fails and prompts API is available, fall back
-                    if not self._use_prompts_api:
-                        raise
+                    self.logger.warning(f"Sampling API request failed: {e}, trying prompts API next")
+                    # Fall through to prompts API
             
             # Use prompts API if available (or as fallback)
-            if self._use_prompts_api:
+            if hasattr(self._server_capabilities, 'prompts') and self._server_capabilities.prompts:
                 self.logger.info("Using prompts API")
                 
                 # First check if we have any prompts, if not, try to fetch them
@@ -426,7 +472,7 @@ class McpClient(BaseProviderModel):
                 
                 # Determine which prompt to use
                 prompt_name = None
-                if custom_prompt and custom_prompt in self._prompt_names:
+                if custom_prompt and custom_prompt in self._prompt_details:
                     # Use the custom prompt from model_info if available
                     prompt_name = custom_prompt
                     self.logger.info(f"Using configured prompt '{prompt_name}'")
@@ -470,7 +516,6 @@ class McpClient(BaseProviderModel):
                         prompt_request, 
                         types.GetPromptResult
                     )
-                    
                     # Process result from prompt API
                     return self._create_chat_response_from_prompt_result(result, request)
                 except Exception as e:
@@ -478,7 +523,7 @@ class McpClient(BaseProviderModel):
                     raise ModelProviderError(f"Failed to get response from prompt '{prompt_name}': {e}")
             
             # If we reach here, neither sampling nor prompts API worked
-            raise ModelProviderError("Server doesn't support compatible APIs")
+            raise ModelProviderError("Server doesn't support compatible APIs for chat")
 
         except McpError as mcp_err:
              self.logger.error(f"MCP Error during createMessage: {mcp_err.error}", exc_info=True)
@@ -501,7 +546,7 @@ class McpClient(BaseProviderModel):
                 data=result.content.text,
                 model=f"{self.model_info.id}/{result.model}",
                 raw=result,
-                usage=UsageStats(),  # Fill with actual usage if available
+                usage=UsageStats(),  # Fill wixth actual usage if available
                 request=request
             )
         raise ModelProviderError("Unexpected result format from sampling API")
@@ -572,3 +617,162 @@ class McpClient(BaseProviderModel):
              raise ModelProviderError(f"Error during MCP termination: {exit_exception}") from exit_exception
         else:
              self.logger.info("MCP provider terminated successfully.")
+
+    async def list_tools(self) -> List[types.Tool]:
+        """List available tools provided by the server."""
+        if not hasattr(self, '_session') or self._session is None:
+            await self.initialize_session()
+        
+        if not hasattr(self._server_capabilities, 'tools') or not self._server_capabilities.tools:
+            raise ModelProviderError("Server doesn't support tools API")
+        
+        try:
+            list_tools_request = types.ListToolsRequest(
+                method="tools/list",
+                params=None
+            )
+            tools_result = await self._session.send_request(
+                list_tools_request, 
+                types.ListToolsResult
+            )
+            self.logger.info(f"Available tools: {[tool.name for tool in tools_result.tools]}")
+            return tools_result.tools
+        except Exception as e:
+            self.logger.error(f"Failed to list tools: {e}")
+            raise ModelProviderError(f"Failed to list tools: {e}")
+
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """Call a tool provided by the server.
+        
+        Args:
+            tool_name: Name of the tool to call
+            arguments: Arguments to pass to the tool
+            
+        Returns:
+            The result returned by the tool
+            
+        Raises:
+            ModelProviderError: If the server doesn't support tools or the tool call fails
+        """
+        if not hasattr(self, '_session') or self._session is None:
+            await self.initialize_session()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'tools') or not self._server_capabilities.tools:
+            raise ModelProviderError("Server doesn't support tools API")
+        
+        try:
+            call_tool_request = types.CallToolRequest(
+                method="tools/call",
+                params=types.CallToolRequestParams(
+                    name=tool_name,
+                    arguments=arguments
+                )
+            )
+            result = await self._session.send_request(
+                call_tool_request, 
+                types.CallToolResult
+            )
+            return result.content #Do we want to return as a content, or extract the data stored in content object?
+        except Exception as e:
+            self.logger.error(f"Failed to call tool '{tool_name}': {e}")
+            raise ModelProviderError(f"Failed to call tool '{tool_name}': {e}")
+
+    async def list_resources(self) -> List[types.Resource]:
+        """List available resources provided by the server.
+        
+        Returns:
+            List of Resource objects describing available resources
+            
+        Raises:
+            ModelProviderError: If the server doesn't support resources or the request fails
+        """
+        if not hasattr(self, '_session') or self._session is None:
+            await self.initialize_session()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'resources') or not self._server_capabilities.resources:
+            raise ModelProviderError("Server doesn't support resources API")
+        
+        try:
+            list_resources_request = types.ListResourcesRequest(
+                method="resources/list",
+                params=None
+            )
+            resources_result = await self._session.send_request(
+                list_resources_request, 
+                types.ListResourcesResult
+            )
+            self.logger.info(f"Available resources: {[resource.uri for resource in resources_result.resources]}")
+            return resources_result.resources
+        except Exception as e:
+            self.logger.error(f"Failed to list resources: {e}")
+            raise ModelProviderError(f"Failed to list resources: {e}")
+
+    async def read_resource(self, uri: str) -> Any:
+        """Read a resource from the server.
+        
+        Args:
+            uri: URI of the resource to read
+            
+        Returns:
+            Any
+
+        Raises:
+            ModelProviderError: If the server doesn't support resources or the read fails
+        """
+        if not hasattr(self, '_session') or self._session is None:
+            await self.initialize_session()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'resources') or not self._server_capabilities.resources:
+            raise ModelProviderError("Server doesn't support resources API")
+        
+        try:
+            read_resource_request = types.ReadResourceRequest(
+                method="resources/read",
+                params=types.ReadResourceRequestParams(
+                    uri=uri
+                )
+            )
+            result = await self._session.send_request(
+                read_resource_request, 
+                types.ReadResourceResult
+            )
+            return result.contents
+        except Exception as e:
+            self.logger.error(f"Failed to read resource '{uri}': {e}")
+            raise ModelProviderError(f"Failed to read resource '{uri}': {e}")
+
+    async def chat(self, request: ChatRequest) -> ChatResponse:
+        """
+        Sends a chat request to the MCP provider and returns the response.
+        
+        Args:
+            request: The chat request containing prompt and parameters.
+            
+        Returns:
+            The chat response from the MCP provider.
+        """
+        # Ensure session is initialized
+        if not hasattr(self, '_session') or self._session is None:
+            await self.initialize_session()
+        
+        
+        try:
+            # Try sampling API first if available
+            if hasattr(self._server_capabilities, 'sampling') and self._server_capabilities.sampling:
+                try:
+                    # Sampling API code...
+                    pass
+                except Exception as e:
+                    self.logger.warning(f"Sampling API request failed: {e}, trying prompts API next")
+                    # Fall through to prompts API
+            
+            # Use prompts API if available
+            if hasattr(self._server_capabilities, 'prompts') and self._server_capabilities.prompts:
+                # Prompts API code...
+                pass
+            
+            # If we reach here, neither sampling nor prompts API worked
+            raise ModelProviderError("Server doesn't support compatible APIs for chat")
+            
+        except McpError as mcp_err:
+            pass

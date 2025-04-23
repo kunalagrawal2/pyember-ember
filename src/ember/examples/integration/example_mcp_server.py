@@ -6,14 +6,13 @@ import sys
 
 # Configure more verbose logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Change to DEBUG level
+    level=logging.DEBUG,
     format='%(asctime)s [MCP Server - %(levelname)s] %(message)s',
     stream=sys.stderr  # Explicitly write to stderr
 )
 logger = logging.getLogger(__name__)
 
 # Flush stdout/stderr immediately
-sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 mcp = FastMCP("Echo")
