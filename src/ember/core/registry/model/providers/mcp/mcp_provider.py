@@ -1,4 +1,5 @@
 #TODO First making with stdio, will implement SSE later
+#TODO Only MCP tool usage is implemented, rest will be added later
 from typing import Optional, Tuple
 
 import logging
@@ -474,7 +475,6 @@ class McpClient(BaseProviderModel):
             ChatResponse: The response from processing the request
         """
         # Check if we have an underlying model
-        print(f"Checking Model ID: {self._model.model_info.id}")
         if self._model is None:
             raise ModelProviderError("No underlying model provided")
         else:
