@@ -2,7 +2,6 @@
 This test mocks openai.Model.list() to simulate API responses.
 """
 
-
 import openai
 import pytest
 

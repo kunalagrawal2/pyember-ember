@@ -48,7 +48,7 @@ Usage example:
     # Generate a response
     response = model("What is the Ember framework?")
     # Access response content with response.data
-    
+
     # Example: "Ember is a framework for building composable LLM applications..."
 
     # Access usage statistics

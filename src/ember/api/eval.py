@@ -5,7 +5,7 @@ and computing performance metrics. It supports both standard evaluators and cust
 evaluation functions.
 
 Standard Evaluators:
-    - "exact_match": Checks for exact match between prediction and reference 
+    - "exact_match": Checks for exact match between prediction and reference
       (case-insensitive)
     - "accuracy": Alias for "exact_match"
     - "numeric": Compares numeric values with customizable tolerance
@@ -16,39 +16,39 @@ Examples:
     from ember.api import eval
     available = eval.list_available_evaluators()
     print(f"Available evaluators: {available}")
-    
+
     # Using standard evaluators from the registry
     accuracy = eval.Evaluator.from_registry("exact_match")
-    
+
     # Evaluators with parameters
     numeric = eval.Evaluator.from_registry("numeric", tolerance=0.01)
     regex = eval.Evaluator.from_registry("regex", pattern=r"answer: (.*)")
-    
+
     # Creating a custom evaluator function
     def custom_metric(prediction, reference):
         return {
             "is_correct": prediction.lower() == reference.lower(),
             "char_count": len(prediction)
         }
-    
+
     custom_eval = eval.Evaluator.from_function(custom_metric)
-    
+
     # Evaluating a model on a dataset
     from ember.api import datasets, models
-    
+
     test_data = datasets("mmlu").subset("physics").split("test")
     model = models.openai.gpt4o
-    
+
     pipeline = eval.EvaluationPipeline([accuracy, custom_eval])
     results = pipeline.evaluate(model, test_data)
-    
+
     print(f"Accuracy: {results['is_correct']*100:.1f}%")
     print(f"Average character count: {results['char_count']:.1f}")
-    
+
 Custom Evaluator Implementation:
     # Implementing a custom evaluator class directly
     from ember.api.eval import IEvaluator, EvaluationResult
-    
+
     class WordCountEvaluator(IEvaluator):
         def evaluate(self, system_output, correct_answer, **kwargs):
             word_count = len(system_output.split())
@@ -58,10 +58,10 @@ Custom Evaluator Implementation:
                 score=min(1.0, word_count / 20),  # Normalize to 0-1
                 metadata={"word_count": word_count}
             )
-    
+
     # Register custom evaluator in registry
     eval.register_evaluator("word_count", WordCountEvaluator)
-    
+
     # Use registered custom evaluator
     word_counter = eval.Evaluator.from_registry("word_count", min_words=10)
 """

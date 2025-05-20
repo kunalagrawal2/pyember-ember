@@ -194,10 +194,10 @@ class SimpleQuestionAnswerer(Operator[QuestionInput, AnswerOutput]):
 class DiverseAnswerGenerator(Operator[QuestionInput, MultipleAnswersOutput]):
     """Generates multiple diverse answers to a question."""
 
-    specification: ClassVar[
-        Specification[QuestionInput, MultipleAnswersOutput]
-    ] = Specification(
-        input_model=QuestionInput, structured_output=MultipleAnswersOutput
+    specification: ClassVar[Specification[QuestionInput, MultipleAnswersOutput]] = (
+        Specification(
+            input_model=QuestionInput, structured_output=MultipleAnswersOutput
+        )
     )
 
     # Field declarations

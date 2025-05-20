@@ -8,9 +8,10 @@ These tests verify:
   - Re-entrancy is properly handled (including nested JIT operators).
 """
 
+from typing import Any, Dict
+
 from ember.core.registry.operator.base.operator_base import Operator
-from ember.xcs import jit, TracerContext
-from typing import Dict, Any
+from ember.xcs import TracerContext, jit
 
 
 class DummySpecification:
@@ -24,10 +25,10 @@ class DummySpecification:
 @jit()
 class DummyTracingOperator(Operator[Dict[str, Any], Dict[str, Any]]):
     specification = DummySpecification()
-    
+
     def __init__(self, **kwargs) -> None:
         pass
-        
+
     def forward(self, *, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"output": "traced"}
 
@@ -62,7 +63,7 @@ def test_jit_operator_always_executes() -> None:
     class DummyJITOperator(Operator[Dict[str, Any], Dict[str, Any]]):
         specification = DummySpecification()
         call_count = 0
-        
+
         def __init__(self, **kwargs) -> None:
             pass
 
@@ -88,7 +89,7 @@ def test_force_trace() -> None:
     class DummyForceJITOperator(Operator[Dict[str, Any], Dict[str, Any]]):
         specification = DummySpecification()
         trace_count = 0
-        
+
         def __init__(self, **kwargs) -> None:
             pass
 
@@ -111,7 +112,7 @@ def test_nested_jit() -> None:
     @jit()
     class InnerOperator(Operator[Dict[str, Any], Dict[str, Any]]):
         specification = DummySpecification()
-        
+
         def __init__(self, **kwargs) -> None:
             pass
 

@@ -34,9 +34,9 @@ class MockNode:
         self.inbound_edges: List[str] = []  # Nodes that feed into this one
         self.outbound_edges: List[str] = []  # Nodes this one feeds into
         self.attributes: XCSNodeAttributes = {}  # Node metadata
-        self.captured_outputs: Optional[
-            Dict[str, Any]
-        ] = None  # Latest execution result
+        self.captured_outputs: Optional[Dict[str, Any]] = (
+            None  # Latest execution result
+        )
 
 
 class MockGraph:

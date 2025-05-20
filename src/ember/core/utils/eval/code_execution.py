@@ -247,9 +247,11 @@ class PythonHandler(LanguageHandler):
         if violations:
             violation_details = "\n- ".join([f"{v}" for v in violations])
             raise SecurityViolationError.for_pattern(
-                pattern="multiple security violations"
-                if len(violations) > 1
-                else violations[0],
+                pattern=(
+                    "multiple security violations"
+                    if len(violations) > 1
+                    else violations[0]
+                ),
                 code_snippet=code[:200] if len(code) > 200 else code,
             )
 
@@ -558,9 +560,9 @@ class CodeExecutor:
                                 memory_used_mb=memory_used,
                                 stdout=stdout,
                                 stderr=stderr,
-                                error=None
-                                if process.returncode == 0
-                                else "Runtime error",
+                                error=(
+                                    None if process.returncode == 0 else "Runtime error"
+                                ),
                                 exit_code=process.returncode,
                             )
 
@@ -734,15 +736,21 @@ class CodeCompetitionEvaluator(IEvaluator[str, Dict[str, Any]]):
                         # Truncate long outputs for metadata
                         result_entry.update(
                             {
-                                "stderr_preview": (test_result.stderr[:200] + "...")
-                                if len(test_result.stderr) > 200
-                                else test_result.stderr,
-                                "output_preview": (test_result.stdout[:200] + "...")
-                                if len(test_result.stdout) > 200
-                                else test_result.stdout,
-                                "expected_preview": (expected_output[:200] + "...")
-                                if len(expected_output) > 200
-                                else expected_output,
+                                "stderr_preview": (
+                                    (test_result.stderr[:200] + "...")
+                                    if len(test_result.stderr) > 200
+                                    else test_result.stderr
+                                ),
+                                "output_preview": (
+                                    (test_result.stdout[:200] + "...")
+                                    if len(test_result.stdout) > 200
+                                    else test_result.stdout
+                                ),
+                                "expected_preview": (
+                                    (expected_output[:200] + "...")
+                                    if len(expected_output) > 200
+                                    else expected_output
+                                ),
                             }
                         )
 

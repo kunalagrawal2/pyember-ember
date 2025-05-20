@@ -10,9 +10,9 @@ Usage:
 import argparse
 import logging
 import sys
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from ember.api import datasets, DatasetBuilder
+from ember.api import DatasetBuilder, datasets
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(message)s")

@@ -9,8 +9,9 @@ Comprehensive test suite for the AIMEPrepper class, covering:
 6. Data normalization
 """
 
+from typing import Any, Dict, List
+
 import pytest
-from typing import Dict, List, Any
 
 from ember.core.utils.data.base.models import DatasetEntry, TaskType
 from ember.core.utils.data.datasets_registry.aime import AIMEConfig, AIMEPrepper

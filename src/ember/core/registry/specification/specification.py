@@ -182,7 +182,9 @@ class Specification(EmberModel, Generic[InputModelT, OutputModelT]):
             return model.model_validate(data)
         if isinstance(data, EmberModel):
             if not isinstance(data, model):
-                error_msg: str = f"{model_label} model mismatch. Expected {model.__name__}, got {type(data).__name__}."
+                error_msg: str = (
+                    f"{model_label} model mismatch. Expected {model.__name__}, got {type(data).__name__}."
+                )
                 logger.error(error_msg)
                 raise SpecificationValidationError.with_context(
                     error_msg,

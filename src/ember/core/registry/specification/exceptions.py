@@ -5,9 +5,9 @@ core exceptions module while maintaining backward compatibility with existing co
 Prefer using the exceptions directly from ember.core.exceptions in new code.
 """
 
+from ember.core.exceptions import InvalidPromptError as PromptSpecificationError
 from ember.core.exceptions import (
     SpecificationValidationError,
-    InvalidPromptError as PromptSpecificationError,
 )
 
 # Re-export specification exceptions for backward compatibility

@@ -17,7 +17,6 @@ from .structured_logging import (
     with_context,
 )
 
-
 __all__ = [
     "LoggingConfig",
     "clear_context",

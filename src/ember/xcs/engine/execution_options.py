@@ -14,18 +14,18 @@ Usage:
 2. Global configuration:
    ```python
    set_execution_options(scheduler="parallel")
-   
+
    # Operations inherit settings
    result1 = operator1(inputs=data1)
    result2 = operator2(inputs=data2)
    ```
-   
+
 3. With JIT compilation:
    ```python
    @jit
    def process(data):
        return transformed_data
-       
+
    with execution_options(scheduler="parallel", max_workers=8):
        result = process(input_data)  # Uses parallel execution
    ```
@@ -33,7 +33,7 @@ Usage:
 
 import dataclasses
 import threading
-from typing import Any, Dict, Literal, Optional, Set, Union, FrozenSet
+from typing import Any, Dict, FrozenSet, Literal, Optional, Set, Union
 
 from ember.core.exceptions import InvalidArgumentError
 
@@ -48,26 +48,21 @@ VALID_SCHEDULER_TYPES: FrozenSet[str] = frozenset(
 )
 
 # Valid executor types
-VALID_EXECUTORS: FrozenSet[str] = frozenset(
-    ["auto", "async", "thread"]
-)
+VALID_EXECUTORS: FrozenSet[str] = frozenset(["auto", "async", "thread"])
 
 # =============================================================================
 # Option validation utilities
 # =============================================================================
 
-def validate_option(
-    option_name: str, 
-    value: str, 
-    valid_values: FrozenSet[str]
-) -> None:
+
+def validate_option(option_name: str, value: str, valid_values: FrozenSet[str]) -> None:
     """Validate that an option value is allowed.
-    
+
     Args:
         option_name: Name of the option being validated
         value: The option value
         valid_values: Set of valid values
-        
+
     Raises:
         InvalidArgumentError: If value is not valid
     """
@@ -77,8 +72,8 @@ def validate_option(
             context={
                 "option": option_name,
                 "value": value,
-                "valid_values": sorted(valid_values)
-            }
+                "valid_values": sorted(valid_values),
+            },
         )
 
 
@@ -100,7 +95,7 @@ class ExecutionOptions:
         debug: Whether to enable debug output
         scheduler: Scheduler strategy or instance (overrides use_parallel)
             Valid values: "sequential", "parallel", "wave", "auto", "noop"
-        
+
         # Execution options
         executor: Executor selection mode
             Valid values: "auto", "async", "thread"
@@ -122,7 +117,7 @@ class ExecutionOptions:
     # - BaseScheduler instance for direct control
     # - None to use default based on use_parallel
     scheduler: Optional[Union[SchedulerType, Any]] = None
-    
+
     # Execution options with simplified naming
     executor: str = "auto"
     fail_fast: bool = True
@@ -130,26 +125,29 @@ class ExecutionOptions:
     def __post_init__(self) -> None:
         """Validates configuration values."""
         # Validate max_workers
-        if (self.max_workers is not None and 
-                (not isinstance(self.max_workers, int) or self.max_workers <= 0)):
+        if self.max_workers is not None and (
+            not isinstance(self.max_workers, int) or self.max_workers <= 0
+        ):
             raise InvalidArgumentError.with_context(
                 "max_workers must be a positive integer or None",
                 max_workers=self.max_workers,
             )
 
         # Validate scheduler
-        if (isinstance(self.scheduler, str) and 
-                self.scheduler.lower() not in _SCHEDULER_MAP):
+        if (
+            isinstance(self.scheduler, str)
+            and self.scheduler.lower() not in _SCHEDULER_MAP
+        ):
             raise InvalidArgumentError.with_context(
                 f"Unknown scheduler: {self.scheduler}",
                 scheduler=self.scheduler,
                 valid_schedulers=list(_SCHEDULER_MAP.keys()),
             )
-            
+
         # Validate executor type
         if isinstance(self.executor, str):
             validate_option("executor", self.executor, VALID_EXECUTORS)
-            
+
         # fail_fast is a boolean, no validation needed
 
 
@@ -199,7 +197,7 @@ def set_execution_options(**kwargs: Any) -> ExecutionOptions:
         InvalidArgumentError: When provided invalid option or value
     """
     global _GLOBAL_OPTIONS
-    
+
     # Validate option names against dataclass fields
     fields: Set[str] = {f.name for f in dataclasses.fields(ExecutionOptions)}
     invalid_keys = set(kwargs.keys()) - fields
@@ -209,43 +207,43 @@ def set_execution_options(**kwargs: Any) -> ExecutionOptions:
             invalid_options=sorted(invalid_keys),
             valid_options=sorted(fields),
         )
-    
+
     # Handle scheduler-to-parallel mapping for backward compatibility
     if "scheduler" in kwargs and isinstance(kwargs["scheduler"], str):
         scheduler_name = kwargs["scheduler"].lower()
-        
+
         # Only set use_parallel if not already in kwargs
         if "use_parallel" not in kwargs and scheduler_name in _SCHEDULER_MAP:
             kwargs["use_parallel"] = _SCHEDULER_MAP[scheduler_name]
-    
+
     # Create new immutable options in a thread-safe manner
     with _GLOBAL_LOCK:
         current = dataclasses.asdict(_GLOBAL_OPTIONS)
         updated = {**current, **kwargs}
         new_options = ExecutionOptions(**updated)
         _GLOBAL_OPTIONS = new_options
-        
+
     return new_options
 
 
 def reset_execution_options() -> ExecutionOptions:
     """Resets execution options to system defaults.
-    
+
     Clears thread-local options and resets global options.
-    
+
     Returns:
         Default execution options
     """
     global _GLOBAL_OPTIONS
-    
+
     # Clear thread-local options if set
     if hasattr(_LOCAL, "options"):
         delattr(_LOCAL, "options")
-    
+
     # Reset global options atomically
     with _GLOBAL_LOCK:
         _GLOBAL_OPTIONS = ExecutionOptions()
-        
+
     return _GLOBAL_OPTIONS
 
 
@@ -273,17 +271,17 @@ class _ExecutionContext:
             raise InvalidArgumentError.with_context(
                 f"Invalid execution option(s): {', '.join(invalid_keys)}",
                 invalid_options=sorted(invalid_keys),
-                valid_options=sorted(fields)
+                valid_options=sorted(fields),
             )
-            
+
         # Handle scheduler-to-parallel mapping for backward compatibility
         if "scheduler" in kwargs and isinstance(kwargs["scheduler"], str):
             scheduler_name = kwargs["scheduler"].lower()
-            
+
             # Only set use_parallel if not explicitly provided
             if "use_parallel" not in kwargs and scheduler_name in _SCHEDULER_MAP:
                 kwargs["use_parallel"] = _SCHEDULER_MAP[scheduler_name]
-                
+
         self.kwargs = kwargs
         self.previous = None
 
@@ -295,14 +293,14 @@ class _ExecutionContext:
         """
         # Save previous thread-local options if they exist
         self.previous = getattr(_LOCAL, "options", None)
-        
+
         # Create new options based on current settings
         current = dataclasses.asdict(get_execution_options())
         updated = {**current, **self.kwargs}
-        
+
         # Set thread-local options
         _LOCAL.options = ExecutionOptions(**updated)
-        
+
         return _LOCAL.options
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -332,7 +330,7 @@ def execution_options(**kwargs: Any) -> _ExecutionContext:
 
     Raises:
         InvalidArgumentError: If options/values are invalid
-        
+
     Example:
         ```python
         # Parallel execution with 4 workers

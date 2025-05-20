@@ -19,7 +19,18 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple, TypeVar, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from ember.core.exceptions import (
     ParallelExecutionError,
@@ -31,21 +42,21 @@ from ember.xcs.transforms.transform_base import BaseTransformation, ParallelOpti
 
 class ParallelTransformation(BaseTransformation):
     """Transformation for parallel execution.
-    
+
     Transforms a function to execute in parallel across multiple workers,
     automatically distributing work and collecting results.
     """
-    
+
     def __init__(
-        self, 
-        *, 
-        num_workers=None, 
+        self,
+        *,
+        num_workers=None,
         continue_on_errors=False,
         timeout_seconds=None,
-        devices=None
+        devices=None,
     ):
         """Initialize the parallel transformation.
-        
+
         Args:
             num_workers: Number of worker threads to use
             continue_on_errors: Whether to continue execution if errors occur
@@ -60,13 +71,13 @@ class ParallelTransformation(BaseTransformation):
             return_partial=True,
         )
         self.devices = devices
-        
+
     def __call__(self, fn):
         """Apply the parallel transformation to a function.
-        
+
         Args:
             fn: Function to parallelize
-            
+
         Returns:
             Parallelized function
         """
@@ -214,7 +225,7 @@ def _get_default_num_workers() -> int:
 
 
 def _identify_shardable_inputs(
-    inputs: Mapping[str, Any]
+    inputs: Mapping[str, Any],
 ) -> Dict[str, Tuple[bool, int]]:
     """Identifying input fields suitable for sharding.
 
@@ -844,6 +855,7 @@ def pmap(
                 sharding_options=sharding_options,
                 execution_options=execution_options,
             )
+
         return decorator
 
     # If devices parameter is used, log that it's currently not functional
@@ -930,7 +942,7 @@ def pmap(
         """
         # Import here to avoid circular dependencies
         from ember.xcs.utils.executor import Dispatcher
-        
+
         try:
             # Create input shards for parallel processing
             sharded_inputs = _shard_inputs(
@@ -943,29 +955,31 @@ def pmap(
 
             # Extract executor type from environment
             executor_type = os.environ.get("XCS_EXECUTION_ENGINE", "auto")
-            
+
             # Create dispatcher for parallel execution
             dispatcher = Dispatcher(
                 max_workers=resolved_workers,
                 timeout=execution_options.timeout if execution_options else None,
-                fail_fast=not (execution_options and execution_options.continue_on_errors),
-                executor=executor_type
+                fail_fast=not (
+                    execution_options and execution_options.continue_on_errors
+                ),
+                executor=executor_type,
             )
-            
+
             try:
                 # Format input dictionaries for dispatcher
                 input_dicts = [{"inputs": shard} for shard in sharded_inputs]
-                
+
                 # Execute tasks in parallel
                 shard_results = dispatcher.map(func, input_dicts)
-                
+
                 # Check for empty results
                 if not shard_results:
                     raise ParallelExecutionError(
                         message="No results returned from parallel execution",
-                        context={"num_shards": len(sharded_inputs)}
+                        context={"num_shards": len(sharded_inputs)},
                     )
-                
+
                 # Combine and return results
                 return _combine_results(shard_results)
             finally:

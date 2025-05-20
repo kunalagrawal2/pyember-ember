@@ -3,7 +3,8 @@ Test script for the simplified executor framework.
 """
 
 import time
-from ember.xcs.utils.executor import Dispatcher, ThreadExecutor, AsyncExecutor
+
+from ember.xcs.utils.executor import AsyncExecutor, Dispatcher, ThreadExecutor
 
 
 def simple_function(*, inputs):
@@ -20,12 +21,8 @@ def io_bound_function(*, inputs):
 def test_thread_executor():
     """Test explicit thread executor."""
     print("\nTesting ThreadExecutor...")
-    executor = ThreadExecutor(
-        max_workers=4,
-        timeout=None,
-        fail_fast=True
-    )
-    
+    executor = ThreadExecutor(max_workers=4, timeout=None, fail_fast=True)
+
     try:
         inputs = [{"value": i} for i in range(10)]
         results = executor.execute(simple_function, inputs)
@@ -37,12 +34,8 @@ def test_thread_executor():
 def test_async_executor():
     """Test explicit async executor."""
     print("\nTesting AsyncExecutor...")
-    executor = AsyncExecutor(
-        max_concurrency=4,
-        timeout=None,
-        fail_fast=True
-    )
-    
+    executor = AsyncExecutor(max_concurrency=4, timeout=None, fail_fast=True)
+
     try:
         inputs = [{"value": f"item-{i}"} for i in range(10)]
         results = executor.execute(io_bound_function, inputs)
@@ -55,13 +48,13 @@ def test_dispatcher_auto():
     """Test dispatcher with auto executor selection."""
     print("\nTesting Dispatcher with auto selection...")
     dispatcher = Dispatcher(max_workers=4)
-    
+
     try:
         # Should select thread for CPU-bound simple_function
         inputs = [{"value": i} for i in range(5)]
         results = dispatcher.map(simple_function, inputs)
         print(f"CPU-bound results: {[r['result'] for r in results]}")
-        
+
         # Should select async for I/O-bound io_bound_function
         inputs = [{"value": f"item-{i}"} for i in range(5)]
         results = dispatcher.map(io_bound_function, inputs)
@@ -72,17 +65,15 @@ def test_dispatcher_auto():
 
 def test_error_handling():
     """Test error handling settings."""
+
     def error_function(*, inputs):
         if inputs["value"] % 3 == 0:
             raise ValueError(f"Error for input {inputs['value']}")
         return {"result": inputs["value"] * 2}
-    
+
     print("\nTesting error handling - fail_fast=True...")
-    dispatcher_fail_fast = Dispatcher(
-        max_workers=4,
-        fail_fast=True
-    )
-    
+    dispatcher_fail_fast = Dispatcher(max_workers=4, fail_fast=True)
+
     try:
         inputs = [{"value": i} for i in range(10)]
         try:
@@ -92,13 +83,10 @@ def test_error_handling():
             print(f"Got expected exception: {e}")
     finally:
         dispatcher_fail_fast.close()
-    
+
     print("\nTesting error handling - fail_fast=False...")
-    dispatcher_continue = Dispatcher(
-        max_workers=4,
-        fail_fast=False
-    )
-    
+    dispatcher_continue = Dispatcher(max_workers=4, fail_fast=False)
+
     try:
         inputs = [{"value": i} for i in range(10)]
         results = dispatcher_continue.map(error_function, inputs)

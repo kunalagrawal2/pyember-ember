@@ -16,9 +16,9 @@ from ember.xcs.engine.execution_options import (
 
 # Core engine functionality
 from ember.xcs.engine.unified_engine import (
-    execute_graph,
-    GraphExecutor,
     ExecutionMetrics,
+    GraphExecutor,
+    execute_graph,
 )
 
 # All scheduler functionality is in the schedulers package
@@ -28,7 +28,6 @@ __all__ = [
     # Execution options
     "ExecutionOptions",
     "execution_options",
-    
     # Engine core
     "execute_graph",
     "GraphExecutor",

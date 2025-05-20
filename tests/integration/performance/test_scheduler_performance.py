@@ -10,9 +10,14 @@ import logging
 import statistics
 import time
 
-from ember.xcs.engine.unified_engine import execute_graph, ExecutionOptions
-from ember.xcs.schedulers.unified_scheduler import NoOpScheduler, ParallelScheduler, SequentialScheduler, WaveScheduler
+from ember.xcs.engine.unified_engine import ExecutionOptions, execute_graph
 from ember.xcs.graph.xcs_graph import XCSGraph
+from ember.xcs.schedulers.unified_scheduler import (
+    NoOpScheduler,
+    ParallelScheduler,
+    SequentialScheduler,
+    WaveScheduler,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -47,7 +52,9 @@ def test_sequential_vs_parallel_scheduler():
     seq_times = []
     for i in range(3):
         start_time = time.time()
-        seq_results = execute_graph(graph, {}, options=seq_options, scheduler=seq_scheduler)
+        seq_results = execute_graph(
+            graph, {}, options=seq_options, scheduler=seq_scheduler
+        )
         elapsed = time.time() - start_time
         seq_times.append(elapsed)
         logger.info(f"Run {i+1}: {elapsed:.4f}s")
@@ -63,7 +70,9 @@ def test_sequential_vs_parallel_scheduler():
     par_times = []
     for i in range(3):
         start_time = time.time()
-        par_results = execute_graph(graph, {}, options=par_options, scheduler=par_scheduler)
+        par_results = execute_graph(
+            graph, {}, options=par_options, scheduler=par_scheduler
+        )
         elapsed = time.time() - start_time
         par_times.append(elapsed)
         logger.info(f"Run {i+1}: {elapsed:.4f}s")
@@ -136,7 +145,9 @@ def test_sequential_with_dependencies():
     seq_times = []
     for i in range(3):
         start_time = time.time()
-        seq_results = execute_graph(graph, {}, options=seq_options, scheduler=seq_scheduler)
+        seq_results = execute_graph(
+            graph, {}, options=seq_options, scheduler=seq_scheduler
+        )
         elapsed = time.time() - start_time
         seq_times.append(elapsed)
         logger.info(f"Run {i+1}: {elapsed:.4f}s")
@@ -152,7 +163,9 @@ def test_sequential_with_dependencies():
     par_times = []
     for i in range(3):
         start_time = time.time()
-        par_results = execute_graph(graph, {}, options=par_options, scheduler=par_scheduler)
+        par_results = execute_graph(
+            graph, {}, options=par_options, scheduler=par_scheduler
+        )
         elapsed = time.time() - start_time
         par_times.append(elapsed)
         logger.info(f"Run {i+1}: {elapsed:.4f}s")
@@ -218,7 +231,9 @@ def test_diamond_pattern():
     seq_times = []
     for i in range(3):
         start_time = time.time()
-        seq_results = execute_graph(graph, {}, options=seq_options, scheduler=seq_scheduler)
+        seq_results = execute_graph(
+            graph, {}, options=seq_options, scheduler=seq_scheduler
+        )
         elapsed = time.time() - start_time
         seq_times.append(elapsed)
         logger.info(f"Run {i+1}: {elapsed:.4f}s")
@@ -234,7 +249,9 @@ def test_diamond_pattern():
     par_times = []
     for i in range(3):
         start_time = time.time()
-        par_results = execute_graph(graph, {}, options=par_options, scheduler=par_scheduler)
+        par_results = execute_graph(
+            graph, {}, options=par_options, scheduler=par_scheduler
+        )
         elapsed = time.time() - start_time
         par_times.append(elapsed)
         logger.info(f"Run {i+1}: {elapsed:.4f}s")

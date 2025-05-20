@@ -9,8 +9,15 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional, Union
 
-from datasets import Dataset, DatasetDict, disable_caching, enable_caching
-from datasets import disable_progress_bar, enable_progress_bar, load_dataset
+from datasets import (
+    Dataset,
+    DatasetDict,
+    disable_caching,
+    disable_progress_bar,
+    enable_caching,
+    enable_progress_bar,
+    load_dataset,
+)
 from huggingface_hub import HfApi
 from requests.exceptions import HTTPError
 
@@ -88,7 +95,7 @@ class HuggingFaceDatasetLoader(IDatasetLoader):
             RuntimeError: If an HTTP error occurs or an unexpected exception is raised during loading.
         """
         logger.info("Checking dataset existence on the Hub: %s", dataset_name)
-        
+
         api: HfApi = HfApi()
         try:
             api.dataset_info(dataset_name)

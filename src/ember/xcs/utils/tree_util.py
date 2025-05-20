@@ -71,14 +71,12 @@ A_contra = TypeVar(
 
 # Protocol for flatten function - converts an object to (leaves, auxiliary data)
 class FlattenFn(Protocol[T_contra, L, A_co]):
-    def __call__(self, obj: T_contra) -> Tuple[List[L], A_co]:
-        ...
+    def __call__(self, obj: T_contra) -> Tuple[List[L], A_co]: ...
 
 
 # Protocol for unflatten function - reconstructs object from auxiliary data and leaves
 class UnflattenFn(Protocol[T_co, L, A_contra]):
-    def __call__(self, aux: A_contra, children: List[L]) -> T_co:
-        ...
+    def __call__(self, aux: A_contra, children: List[L]) -> T_co: ...
 
 
 # Type variable for registry keys
@@ -115,11 +113,11 @@ def _flatten_ember_model(model: EmberModel) -> Tuple[List[object], AuxType]:
     """
     # Extract the model's data as a dictionary
     model_dict = model.to_dict()
-    
+
     # Store the exact type information including module path for reliable reconstruction
     model_type = type(model)
     type_path = f"{model_type.__module__}.{model_type.__qualname__}"
-    
+
     return [model_dict], (model_type, type_path)
 
 
@@ -140,17 +138,19 @@ def _unflatten_ember_model(aux: AuxType, children: List[object]) -> EmberModel:
     if isinstance(type_path, str):
         try:
             # Split module and class parts
-            last_dot = type_path.rfind('.')
+            last_dot = type_path.rfind(".")
             if last_dot > 0:
                 module_name = type_path[:last_dot]
-                class_name = type_path[last_dot+1:]
-                
+                class_name = type_path[last_dot + 1 :]
+
                 # Import module and get class
                 module = __import__(module_name, fromlist=[class_name])
                 actual_cls = getattr(module, class_name)
-                
+
                 # Reconstruct with proper type
-                if hasattr(actual_cls, "from_dict") and callable(getattr(actual_cls, "from_dict")):
+                if hasattr(actual_cls, "from_dict") and callable(
+                    getattr(actual_cls, "from_dict")
+                ):
                     return actual_cls.from_dict(model_dict)
         except (ImportError, AttributeError) as e:
             # Log and fall back to provided class
@@ -159,7 +159,7 @@ def _unflatten_ember_model(aux: AuxType, children: List[object]) -> EmberModel:
     # Fallback to provided class
     if hasattr(model_cls, "from_dict") and callable(getattr(model_cls, "from_dict")):
         return model_cls.from_dict(model_dict)
-    
+
     # Last resort
     return model_cls(**model_dict)
 

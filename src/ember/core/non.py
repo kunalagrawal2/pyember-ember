@@ -32,8 +32,6 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Type, TypeVar, cast
 
-from ember.core.types.ember_model import EmberModel
-
 from ember.core.registry.model.model_module.lm import LMModule, LMModuleConfig
 
 # Import the actual Operator class and EmberModule
@@ -63,6 +61,7 @@ from ember.core.registry.operator.core.verifier import (
     VerifierSpecification,
 )
 from ember.core.registry.specification.specification import Specification
+from ember.core.types.ember_model import EmberModel
 
 # Define type variables for use in generic operators
 InputT = TypeVar("InputT")

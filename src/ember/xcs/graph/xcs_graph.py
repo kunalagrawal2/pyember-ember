@@ -7,16 +7,16 @@ data dependencies between operations.
 Example:
     ```python
     graph = XCSGraph()
-    
+
     # Add computation nodes
     input_node = graph.add_node(preprocess_fn, name="preprocess")
     compute_node = graph.add_node(compute_fn, name="compute")
     output_node = graph.add_node(postprocess_fn, name="postprocess")
-    
+
     # Define data flow
     graph.add_edge(input_node, compute_node)
     graph.add_edge(compute_node, output_node)
-    
+
     # Execute the computation with an execution engine
     from ember.xcs.engine import execute
     results = execute(graph, inputs={"data": input_data})
@@ -140,11 +140,11 @@ class XCSGraph:
         node_metadata = metadata or {}
         if input_mapping:
             node_metadata["input_mapping"] = input_mapping
-            
+
         self.nodes[node_id] = XCSNode(
             operator=operator, node_id=node_id, name=name, metadata=node_metadata
         )
-        
+
         return node_id
 
     def add_edge(
@@ -257,7 +257,7 @@ class XCSGraph:
             else:
                 # Default behavior: merge all results
                 inputs.update(source_results)
-        
+
         return inputs
 
     def __str__(self) -> str:

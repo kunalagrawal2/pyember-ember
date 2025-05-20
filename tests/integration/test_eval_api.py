@@ -67,9 +67,9 @@ try:
     def custom_metric(prediction, reference):
         return {
             "is_correct": prediction.lower() == reference.lower(),
-            "length_ratio": len(prediction) / len(reference)
-            if len(reference) > 0
-            else 0,
+            "length_ratio": (
+                len(prediction) / len(reference) if len(reference) > 0 else 0
+            ),
         }
 
     custom_evaluator = eval.Evaluator.from_function(custom_metric)

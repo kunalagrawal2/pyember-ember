@@ -5,7 +5,7 @@ This module contains property-based tests using Hypothesis to test invariants
 and properties of data transformers.
 """
 
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 import pytest
@@ -475,7 +475,7 @@ class TestTransformerContextPreservation:
                 else:
                     # For list, directly transform
                     return self._index_items(data)
-            
+
             def _index_items(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 result = []
                 # Keep track of running sums for integer fields encountered so far
@@ -500,11 +500,11 @@ class TestTransformerContextPreservation:
 
         # Verify transformation was applied correctly
         assert len(result) == len(data)
-        
+
         # Check indices
         for i, item in enumerate(result):
             assert item["index"] == i
-            
+
         # Check running sums for integer fields (starting from second item)
         for i in range(1, len(result)):
             for key, value in data[i].items():
@@ -553,17 +553,17 @@ class TestDataPreservationProperties:
     @settings(suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow])
     @given(
         data=dataset_lists(min_items=1, max_items=5),
-        field_name=st.text(min_size=1, max_size=10).filter(lambda x: x.isalnum())
+        field_name=st.text(min_size=1, max_size=10).filter(lambda x: x.isalnum()),
     )
     def test_conditional_transformation(self, data, field_name):
         """Test that transformers can conditionally modify items."""
         # Skip if data is empty or field_name conflicts
         if not data:
             return
-            
+
         # Create a unique field name that won't conflict
         field_name = f"special_{field_name}"
-        
+
         # Skip if field already exists in data
         for item in data:
             if field_name in item:
@@ -572,7 +572,7 @@ class TestDataPreservationProperties:
         # Create a conditional transformer that only modifies items meeting a condition
         def conditional_transform(item: Dict[str, Any]) -> Dict[str, Any]:
             result = item.copy()
-            
+
             # Find numeric fields and conditionally tag items - lower threshold to
             # ensure we have enough matches
             has_numeric = False
@@ -580,10 +580,10 @@ class TestDataPreservationProperties:
                 if isinstance(value, int) and value > 10:  # lower threshold
                     has_numeric = True
                     break
-                    
+
             if has_numeric:
                 result[field_name] = True
-                
+
             return result
 
         # Create a builder and add the transformer
@@ -600,13 +600,13 @@ class TestDataPreservationProperties:
             # Check that all original data is preserved
             for key, value in data[i].items():
                 assert item[key] == value
-                
+
             # Verify the condition was applied correctly
             has_numeric = any(
                 isinstance(value, int) and value > 10  # match the lowered threshold
                 for key, value in data[i].items()
             )
-            
+
             if has_numeric:
                 assert field_name in item
                 assert item[field_name] is True

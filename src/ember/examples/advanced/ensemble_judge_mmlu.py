@@ -41,7 +41,7 @@ from rich.table import Table
 logger = logging.getLogger(__name__)
 
 # Import necessary modules
-from ember.api import models, operators, Dataset, DatasetBuilder
+from ember.api import Dataset, DatasetBuilder, models, operators
 from ember.api.operators import Operator
 from ember.core.registry.model.model_module.lm import LMModule, LMModuleConfig
 from ember.core.registry.operator.base.operator_base import Specification
@@ -65,6 +65,7 @@ MMLU_SUBJECTS = [
     "college_biology",
     "philosophy",
 ]
+
 
 class MCQInput(EmberModel):
     """Input for multiple-choice question evaluation."""
@@ -489,7 +490,10 @@ class VariedEnsembleMCQOperator(Operator[MCQInput, List[MCQOutput]]):
             # Default model configurations with different models and parameters
             model_configs = [
                 {"model_name": "anthropic:claude-3-opus-20240229", "temperature": 0.0},
-                {"model_name": "anthropic:claude-3-sonnet-20240229", "temperature": 0.7},
+                {
+                    "model_name": "anthropic:claude-3-sonnet-20240229",
+                    "temperature": 0.7,
+                },
                 # Use only available models to ensure functionality
             ]
 
@@ -523,7 +527,7 @@ class VariedEnsembleMCQOperator(Operator[MCQInput, List[MCQOutput]]):
         Returns:
             Processed output with answer and reasoning
         """
-        
+
         # Pre-format choices as text for template insertion
         choices_text = "\n".join([f"{key}. {value}" for key, value in choices.items()])
 
@@ -804,7 +808,7 @@ class JudgeOperator(Operator[EnsembleJudgeInput, EnsembleJudgeOutput]):
 
 class EnsembleJudgePipeline(Operator[MCQInput, EnsembleJudgeOutput]):
     """JIT-optimized pipeline combining ensemble and judge operators.
-    
+
     This pipeline uses the enhanced JIT system with automatic parallelization
     detection to provide substantial performance benefits for ensemble-based workflows.
     """
@@ -834,7 +838,7 @@ class EnsembleJudgePipeline(Operator[MCQInput, EnsembleJudgeOutput]):
     def forward(self, *, inputs: MCQInput) -> EnsembleJudgeOutput:
         """Process a question through the ensemble and judge pipeline.
 
-        The enhanced JIT optimizer automatically identifies parallelization 
+        The enhanced JIT optimizer automatically identifies parallelization
         opportunities within the operator. No explicit hints needed.
 
         Args:
@@ -857,6 +861,7 @@ class EnsembleJudgePipeline(Operator[MCQInput, EnsembleJudgeOutput]):
         # Get judge decision
         return self.judge_operator(inputs=judge_input)
 
+
 # Apply JIT manually after class definition to avoid initialization issues
 EnsembleJudgePipeline = jit(EnsembleJudgePipeline)
 
@@ -876,10 +881,7 @@ def create_pipeline(
         Ensemble-judge pipeline instance
     """
     # Now using explicit keyword arguments to match the updated __init__ method
-    return EnsembleJudgePipeline(
-        model_configs=model_configs, 
-        judge_model=judge_model
-    )
+    return EnsembleJudgePipeline(model_configs=model_configs, judge_model=judge_model)
 
 
 class MMLUExperiment:
@@ -913,8 +915,7 @@ class MMLUExperiment:
         # Create a standard pipeline - use execution_options to control acceleration
         # Using keyword-only parameters for the EnsembleJudgePipeline
         self.ensemble_judge_operator = EnsembleJudgePipeline(
-            model_configs=model_configs, 
-            judge_model=judge_model
+            model_configs=model_configs, judge_model=judge_model
         )
         # Note: acceleration is controlled at execution time using execution_options
 
@@ -928,7 +929,7 @@ class MMLUExperiment:
             Dictionary of experiment results
         """
         # Create models for evaluation
-        
+
         # Load data samples
         mmlu_data = self.mmlu_dataset.load(max_samples=self.sample_size)
 
@@ -1008,10 +1009,12 @@ class MMLUExperiment:
             # Use execution_options context manager with enhanced settings
             # The wave scheduler is optimized for this kind of parallel ensemble workload
             with execution_options(
-                scheduler="wave", 
-                max_workers=len(self.ensemble_judge_operator.ensemble_operator.lm_modules),
+                scheduler="wave",
+                max_workers=len(
+                    self.ensemble_judge_operator.ensemble_operator.lm_modules
+                ),
                 enable_caching=True,  # Enable caching for better performance
-                device_strategy="auto"  # Let system choose the best device strategy
+                device_strategy="auto",  # Let system choose the best device strategy
             ):
                 output = self.ensemble_judge_operator(inputs=input_data)
 
@@ -1203,30 +1206,32 @@ class ExperimentVisualizer:
         # Create figure with three subplots
         fig = plt.figure(figsize=(18, 10))
         gs = plt.GridSpec(2, 3, figure=fig, height_ratios=[3, 2])
-        
-        ax1 = fig.add_subplot(gs[0, 0:2])  # Execution time (top left, spanning 2 columns)
-        ax2 = fig.add_subplot(gs[0, 2])    # Relative speedup (top right)
-        ax3 = fig.add_subplot(gs[1, :])    # JIT metrics (bottom, spanning all columns)
+
+        ax1 = fig.add_subplot(
+            gs[0, 0:2]
+        )  # Execution time (top left, spanning 2 columns)
+        ax2 = fig.add_subplot(gs[0, 2])  # Relative speedup (top right)
+        ax3 = fig.add_subplot(gs[1, :])  # JIT metrics (bottom, spanning all columns)
 
         # Setup data - ordered from slowest to fastest for better visual comparison
         strategies = ["Sequential", "Wave", "Parallel", "Auto"]
-        
+
         # Use a color scheme that shows progression from sequential (red) to fastest (green)
         colors = ["firebrick", "darkorange", "royalblue", "forestgreen"]
-        
+
         # Extract times
         seq_time = benchmark_results["sequential_time"]
         wave_time = benchmark_results["wave_time"]
         parallel_time = benchmark_results["parallel_time"]
         auto_time = benchmark_results["auto_time"]
-        
+
         times = [seq_time, wave_time, parallel_time, auto_time]
 
         # Calculate speedups relative to sequential
         wave_speedup = seq_time / max(wave_time, 1e-6)
         parallel_speedup = seq_time / max(parallel_time, 1e-6)
         auto_speedup = seq_time / max(auto_time, 1e-6)
-        
+
         speedups = [1.0, wave_speedup, parallel_speedup, auto_speedup]
 
         # Plot execution times - use horizontal bars for better readability
@@ -1241,7 +1246,7 @@ class ExperimentVisualizer:
             width = bar.get_width()
             ax1.text(
                 width + 0.01,
-                bar.get_y() + bar.get_height()/2,
+                bar.get_y() + bar.get_height() / 2,
                 f"{width:.4f}s",
                 va="center",
                 fontsize=10,
@@ -1262,67 +1267,78 @@ class ExperimentVisualizer:
             width = bar.get_width()
             ax2.text(
                 width + 0.05,
-                bar.get_y() + bar.get_height()/2,
+                bar.get_y() + bar.get_height() / 2,
                 f"{width:.2f}x",
                 va="center",
                 fontweight="bold",
             )
-            
+
         # Plot JIT metrics if available
         jit_metrics = benchmark_results.get("jit_metrics", {})
         if jit_metrics:
             # Convert metrics to cleaner format for display
             metrics_to_show = [
                 ("Cache Hit Rate", jit_metrics.get("cache_hit_rate", 0) * 100, "%"),
-                ("Avg Compilation", jit_metrics.get("avg_compilation_time_ms", 0), "ms"),
+                (
+                    "Avg Compilation",
+                    jit_metrics.get("avg_compilation_time_ms", 0),
+                    "ms",
+                ),
                 ("Avg Execution", jit_metrics.get("avg_execution_time_ms", 0), "ms"),
                 ("Cache Hits", jit_metrics.get("cache_hits", 0), ""),
                 ("Cache Misses", jit_metrics.get("cache_misses", 0), ""),
                 ("Compilation Count", jit_metrics.get("compilation_count", 0), ""),
                 ("Execution Count", jit_metrics.get("execution_count", 0), ""),
             ]
-            
+
             # Create bar chart of metrics
             metric_names = [m[0] for m in metrics_to_show]
             metric_values = [m[1] for m in metrics_to_show]
             metric_units = [m[2] for m in metrics_to_show]
-            
+
             bars3 = ax3.bar(metric_names, metric_values, alpha=0.7, color="steelblue")
             ax3.set_title("JIT Performance Metrics")
             ax3.set_ylabel("Value")
             ax3.grid(axis="y", alpha=0.3)
-            
+
             # Add values on top of bars
             for i, bar in enumerate(bars3):
                 height = bar.get_height()
                 unit = metric_units[i]
                 ax3.text(
-                    bar.get_x() + bar.get_width()/2,
+                    bar.get_x() + bar.get_width() / 2,
                     height + 0.1,
                     f"{height:.2f}{unit}",
                     ha="center",
                     fontsize=9,
                 )
-            
+
             # Add log scale if needed for large values
             if any(v > 1000 for v in metric_values):
                 ax3.set_yscale("log")
                 ax3.set_ylabel("Value (log scale)")
         else:
-            ax3.text(0.5, 0.5, "No JIT metrics available", 
-                    ha="center", va="center", fontsize=14, 
-                    transform=ax3.transAxes)
-            
+            ax3.text(
+                0.5,
+                0.5,
+                "No JIT metrics available",
+                ha="center",
+                va="center",
+                fontsize=14,
+                transform=ax3.transAxes,
+            )
+
         # Add a note about the best strategy
         best_strategy = benchmark_results.get("best_strategy", "auto").capitalize()
         speedup = benchmark_results.get("speedup", 1.0)
-        
+
         plt.figtext(
-            0.5, 0.01, 
-            f"Best strategy: {best_strategy} ({speedup:.2f}x speedup vs Sequential)", 
-            ha="center", 
-            fontsize=12, 
-            bbox={"facecolor": "lightyellow", "alpha": 0.5, "pad": 5}
+            0.5,
+            0.01,
+            f"Best strategy: {best_strategy} ({speedup:.2f}x speedup vs Sequential)",
+            ha="center",
+            fontsize=12,
+            bbox={"facecolor": "lightyellow", "alpha": 0.5, "pad": 5},
         )
 
         plt.tight_layout(rect=[0, 0.05, 1, 0.95])
@@ -1354,7 +1370,7 @@ def run_acceleration_benchmark(
         Dictionary of benchmark results
     """
     from ember.xcs.jit import get_jit_stats
-    
+
     console.print(
         Panel(f"Benchmarking execution strategies on {subject}...", style="yellow")
     )
@@ -1362,21 +1378,21 @@ def run_acceleration_benchmark(
     # Constants for benchmark configuration
     WARMUP_RUNS = 2  # Number of warmup runs to stabilize JIT
     MEASURE_RUNS = 3  # Number of measurement runs to average
-    
+
     # Return empty results on error
     empty_results = {
-        "subject": subject, 
-        "sequential_time": 0, 
+        "subject": subject,
+        "sequential_time": 0,
         "wave_time": 0,
         "parallel_time": 0,
         "auto_time": 0,
         "speedup": 1.0,
-        "jit_metrics": {}
+        "jit_metrics": {},
     }
 
     try:
         mmlu_data = MMLUDataset(subject=subject).load(max_samples=sample_size)
-        
+
         # Prepare test input
         if not mmlu_data:
             console.print("[red]No test data available![/red]")
@@ -1389,36 +1405,58 @@ def run_acceleration_benchmark(
         )
 
         # Create pipeline for benchmarking with multiple models
-        pipeline = EnsembleJudgePipeline(
-            model_configs=model_configs
-        )
+        pipeline = EnsembleJudgePipeline(model_configs=model_configs)
 
         # Number of worker threads for parallel execution
         max_workers = len(model_configs)
 
         # Define scheduler configurations to test
         scheduler_configs = [
-            {"name": "sequential", "options": {"scheduler": "sequential", "enable_caching": False}},
-            {"name": "wave", "options": {"scheduler": "wave", "max_workers": max_workers, "enable_caching": False}},
-            {"name": "parallel", "options": {"scheduler": "parallel", "max_workers": max_workers, "enable_caching": False}},
-            {"name": "auto", "options": {"scheduler": "auto", "max_workers": max_workers, "enable_caching": False}}
+            {
+                "name": "sequential",
+                "options": {"scheduler": "sequential", "enable_caching": False},
+            },
+            {
+                "name": "wave",
+                "options": {
+                    "scheduler": "wave",
+                    "max_workers": max_workers,
+                    "enable_caching": False,
+                },
+            },
+            {
+                "name": "parallel",
+                "options": {
+                    "scheduler": "parallel",
+                    "max_workers": max_workers,
+                    "enable_caching": False,
+                },
+            },
+            {
+                "name": "auto",
+                "options": {
+                    "scheduler": "auto",
+                    "max_workers": max_workers,
+                    "enable_caching": False,
+                },
+            },
         ]
-        
+
         results = {}
-        
+
         # Run benchmarks for each scheduler configuration
         for config in scheduler_configs:
             name = config["name"]
             options = config["options"]
-            
+
             console.print(f"Running {name} scheduler benchmark...")
-            
+
             # Perform warmup runs to stabilize JIT
             console.print(f"  Performing {WARMUP_RUNS} warmup runs...")
             for _ in range(WARMUP_RUNS):
                 with execution_options(**options):
                     _ = pipeline(inputs=test_input)
-            
+
             # Collect actual measurements
             times = []
             console.print(f"  Collecting {MEASURE_RUNS} measurement runs...")
@@ -1429,26 +1467,28 @@ def run_acceleration_benchmark(
                 run_time = time.perf_counter() - run_start
                 times.append(run_time)
                 console.print(f"    Run {run+1}: {run_time:.4f}s")
-            
+
             # Calculate statistics
             avg_time = sum(times) / len(times)
             results[f"{name}_time"] = avg_time
-            
+
             # Get JIT metrics after last run
-            if name == "auto":  # Only collect metrics for auto mode to avoid duplication
+            if (
+                name == "auto"
+            ):  # Only collect metrics for auto mode to avoid duplication
                 results["jit_metrics"] = get_jit_stats(pipeline)
-                
+
             console.print(f"  {name.capitalize()} avg time: {avg_time:.4f}s")
-        
+
         # Find the fastest parallel strategy (excluding sequential)
         parallel_times = {
             "wave": results["wave_time"],
             "parallel": results["parallel_time"],
-            "auto": results["auto_time"]
+            "auto": results["auto_time"],
         }
         best_strategy = min(parallel_times.items(), key=lambda x: x[1])[0]
         best_time = parallel_times[best_strategy]
-        
+
         # Calculate speedup ratio against sequential execution
         sequential_time = results["sequential_time"]
         speedup = sequential_time / max(best_time, 1e-6)
@@ -1463,9 +1503,9 @@ def run_acceleration_benchmark(
             "best_strategy": best_strategy,
             "best_time": best_time,
             "speedup": speedup,
-            "jit_metrics": results["jit_metrics"]
+            "jit_metrics": results["jit_metrics"],
         }
-        
+
     except Exception as e:
         console.print(f"[yellow]Benchmark setup error: {e}[/yellow]")
         return empty_results
@@ -1561,7 +1601,9 @@ def main() -> None:
             ExperimentVisualizer.print_summary(results)
 
         # Run acceleration benchmarks to compare different strategies
-        console.print("\n[bold]Benchmarking enhanced JIT acceleration strategies:[/bold]")
+        console.print(
+            "\n[bold]Benchmarking enhanced JIT acceleration strategies:[/bold]"
+        )
         # For benchmark, use same model count as experiment
         benchmark_results = run_acceleration_benchmark(
             subject=subjects_to_evaluate[0],  # Use first subject
@@ -1582,22 +1624,28 @@ def main() -> None:
             f"{benchmark_results['sequential_time']:.4f}s",
             f"{benchmark_results['wave_time']:.4f}s",
             f"{benchmark_results['parallel_time']:.4f}s",
-            f"{benchmark_results['auto_time']:.4f}s"
+            f"{benchmark_results['auto_time']:.4f}s",
         )
 
         # Calculate speedups
-        wave_speedup = benchmark_results['sequential_time'] / max(benchmark_results['wave_time'], 1e-6)
-        parallel_speedup = benchmark_results['sequential_time'] / max(benchmark_results['parallel_time'], 1e-6)
-        auto_speedup = benchmark_results['sequential_time'] / max(benchmark_results['auto_time'], 1e-6)
+        wave_speedup = benchmark_results["sequential_time"] / max(
+            benchmark_results["wave_time"], 1e-6
+        )
+        parallel_speedup = benchmark_results["sequential_time"] / max(
+            benchmark_results["parallel_time"], 1e-6
+        )
+        auto_speedup = benchmark_results["sequential_time"] / max(
+            benchmark_results["auto_time"], 1e-6
+        )
 
         acc_table.add_row(
             "Speedup",
             "Baseline",
             f"{wave_speedup:.2f}x",
             f"{parallel_speedup:.2f}x",
-            f"{auto_speedup:.2f}x"
+            f"{auto_speedup:.2f}x",
         )
-        
+
         # Highlight the best strategy
         best_strategy = benchmark_results.get("best_strategy", "auto").capitalize()
         acc_table.add_row(
@@ -1605,9 +1653,9 @@ def main() -> None:
             "",
             "[bold green]✓[/bold green]" if best_strategy == "Wave" else "",
             "[bold green]✓[/bold green]" if best_strategy == "Parallel" else "",
-            "[bold green]✓[/bold green]" if best_strategy == "Auto" else ""
+            "[bold green]✓[/bold green]" if best_strategy == "Auto" else "",
         )
-        
+
         # Display JIT metrics
         jit_metrics = benchmark_results.get("jit_metrics", {})
         if jit_metrics:
@@ -1615,16 +1663,28 @@ def main() -> None:
             jit_table = Table(title="JIT Performance Metrics")
             jit_table.add_column("Metric", style="cyan")
             jit_table.add_column("Value", style="magenta")
-            
+
             # Add key metrics
-            jit_table.add_row("Cache Hit Rate", f"{jit_metrics.get('cache_hit_rate', 0)*100:.2f}%")
-            jit_table.add_row("Avg Compilation Time", f"{jit_metrics.get('avg_compilation_time_ms', 0):.2f}ms")
-            jit_table.add_row("Avg Execution Time", f"{jit_metrics.get('avg_execution_time_ms', 0):.2f}ms")
-            jit_table.add_row("Cache Hits", str(jit_metrics.get('cache_hits', 0)))
-            jit_table.add_row("Cache Misses", str(jit_metrics.get('cache_misses', 0)))
-            jit_table.add_row("Compilation Count", str(jit_metrics.get('compilation_count', 0)))
-            jit_table.add_row("Execution Count", str(jit_metrics.get('execution_count', 0)))
-            
+            jit_table.add_row(
+                "Cache Hit Rate", f"{jit_metrics.get('cache_hit_rate', 0)*100:.2f}%"
+            )
+            jit_table.add_row(
+                "Avg Compilation Time",
+                f"{jit_metrics.get('avg_compilation_time_ms', 0):.2f}ms",
+            )
+            jit_table.add_row(
+                "Avg Execution Time",
+                f"{jit_metrics.get('avg_execution_time_ms', 0):.2f}ms",
+            )
+            jit_table.add_row("Cache Hits", str(jit_metrics.get("cache_hits", 0)))
+            jit_table.add_row("Cache Misses", str(jit_metrics.get("cache_misses", 0)))
+            jit_table.add_row(
+                "Compilation Count", str(jit_metrics.get("compilation_count", 0))
+            )
+            jit_table.add_row(
+                "Execution Count", str(jit_metrics.get("execution_count", 0))
+            )
+
             # Display both tables
             console.print("\n[bold]JIT Performance Metrics:[/bold]")
             console.print(jit_table)

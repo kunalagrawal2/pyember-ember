@@ -1,7 +1,7 @@
 """Unit tests for code execution evaluators.
 
 These tests focus on the static behavior of the code execution evaluators,
-such as initialization and error handling, avoiding tests that require 
+such as initialization and error handling, avoiding tests that require
 actual code execution which is better tested in integration tests.
 """
 

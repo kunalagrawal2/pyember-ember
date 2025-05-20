@@ -55,7 +55,7 @@ Typical usage example:
     # Basic usage
     response = model("What is the Ember framework?")
     # Access response content with response.data
-    
+
     # Example: "Ember is a Python framework for building AI applications..."
 
     # Advanced usage with more parameters

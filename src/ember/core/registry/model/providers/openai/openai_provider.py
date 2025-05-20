@@ -44,7 +44,7 @@ Usage example:
     # Basic usage
     response = model("What is the Ember framework?")
     # Access response content with response.data
-    
+
     # Example: "The Ember framework is a Python library for composable LLM applications..."
 
     # Advanced usage with more parameters
@@ -320,11 +320,11 @@ class OpenAIModel(BaseProviderModel):
 
     def get_api_model_name(self) -> str:
         """Get the model name formatted for OpenAI's API requirements.
-        
+
         OpenAI API requires lowercase model names. This method ensures that
         model names are properly formatted regardless of how they're stored
         internally in the model registry.
-        
+
         Returns:
             str: The properly formatted model name for OpenAI API requests.
         """
@@ -412,10 +412,10 @@ class OpenAIModel(BaseProviderModel):
         try:
             # Use the timeout parameter from the request or the default from BaseChatParameters
             timeout = openai_kwargs.pop("timeout", 30)
-            
+
             # Get properly formatted model name for API using the provider-specific method
             model_name = self.get_api_model_name()
-            
+
             response: Any = self.client.chat.completions.create(
                 model=model_name,
                 timeout=timeout,

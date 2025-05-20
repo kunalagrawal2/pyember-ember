@@ -174,18 +174,19 @@ def test_model_json_schema() -> None:
     """Test that model_json_schema returns the correct schema for input model."""
     dummy_specification: DummySpecification = DummySpecification()
     schema = dummy_specification.model_json_schema()
-    
+
     # Verify schema includes the expected properties
     assert "properties" in schema
     assert "name" in schema["properties"]
     assert schema["properties"]["name"]["type"] == "string"
-    
+
     # Test with no input_model
     class NoModelSpecification(Specification):
         """Specification with no input model."""
+
         prompt_template: str = "Hello!"
         check_all_placeholders: bool = False
-        
+
     no_model_spec = NoModelSpecification()
     empty_schema = no_model_spec.model_json_schema()
     assert empty_schema == {}

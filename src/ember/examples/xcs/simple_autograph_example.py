@@ -12,9 +12,9 @@ import logging
 import time
 from typing import Any, Dict
 
-from ember.xcs import jit, execution_options, JITMode, get_jit_stats
 from ember.core.registry.operator.base.operator_base import Operator
 from ember.core.registry.specification.specification import Specification
+from ember.xcs import JITMode, execution_options, get_jit_stats, jit
 
 ###############################################################################
 # Mock Operators
@@ -172,7 +172,7 @@ def main() -> None:
         print(f"Value: {result['value']}")
         print("Expected calculation: 20 + 10 = 30, then × 3 = 90")
         print(f"Time: {sequential_time:.4f}s (sequential execution)")
-        
+
     # Get JIT statistics
     stats = get_jit_stats(pipeline)
     print("\nJIT Statistics:")

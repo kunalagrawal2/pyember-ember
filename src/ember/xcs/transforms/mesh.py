@@ -22,8 +22,8 @@ from typing import (
     Optional,
     Protocol,
     Tuple,
-    Union,
     TypeVar,
+    Union,
     runtime_checkable,
 )
 
@@ -890,12 +890,12 @@ def mesh_sharded(
             Raises:
                 MeshShardingError: If the sharding operation fails.
             """
-            distributed_inputs: Dict[
-                Tuple[int, ...], Dict[str, Any]
-            ] = _distribute_inputs(
-                inputs=inputs,
-                mesh=mesh,
-                partition_specs=in_partition,
+            distributed_inputs: Dict[Tuple[int, ...], Dict[str, Any]] = (
+                _distribute_inputs(
+                    inputs=inputs,
+                    mesh=mesh,
+                    partition_specs=in_partition,
+                )
             )
             return _execute_sharded(
                 operator_or_fn, distributed_inputs, mesh, out_partition
@@ -919,12 +919,12 @@ def mesh_sharded(
             Raises:
                 MeshShardingError: If the sharding operation fails.
             """
-            distributed_inputs: Dict[
-                Tuple[int, ...], Dict[str, Any]
-            ] = _distribute_inputs(
-                inputs=inputs,
-                mesh=mesh,
-                partition_specs=in_partition,
+            distributed_inputs: Dict[Tuple[int, ...], Dict[str, Any]] = (
+                _distribute_inputs(
+                    inputs=inputs,
+                    mesh=mesh,
+                    partition_specs=in_partition,
+                )
             )
             return _execute_sharded(
                 operator_or_fn, distributed_inputs, mesh, out_partition
@@ -934,8 +934,8 @@ def mesh_sharded(
 
 
 def pjit(
-    fn: Optional[Callable[..., Any]] = None, 
-    *, 
+    fn: Optional[Callable[..., Any]] = None,
+    *,
     devices: Optional[List[str]] = None,
     mesh_shape: Optional[Tuple[int, ...]] = None,
     in_specs: Optional[Dict[str, PartitionSpec]] = None,
@@ -943,11 +943,11 @@ def pjit(
     mode: str = "enhanced",
 ) -> Callable[..., Any]:
     """Just-in-time compiled parallel execution across a device mesh.
-    
+
     Combines the benefits of JIT compilation with parallel execution across
     a device mesh. This transformation optimizes both the execution plan and
     the data distribution for efficient parallel processing.
-    
+
     Args:
         fn: Function to transform
         devices: List of device identifiers to use
@@ -955,10 +955,10 @@ def pjit(
         in_specs: Partition specifications for inputs
         out_specs: Partition specifications for outputs
         mode: JIT mode to use ("enhanced", "trace", "structural", or "auto")
-        
+
     Returns:
         A transformed function that executes with JIT optimization across devices
-        
+
     Example:
         ```python
         @pjit(mesh_shape=(2, 2))
@@ -970,28 +970,25 @@ def pjit(
     """
     # Import here to avoid circular imports
     from ember.xcs.jit import jit
-    
+
     # Handle both decorator styles (@pjit and @pjit())
     if fn is None:
         return lambda f: pjit(
-            f, 
-            devices=devices, 
+            f,
+            devices=devices,
             mesh_shape=mesh_shape,
-            in_specs=in_specs, 
+            in_specs=in_specs,
             out_specs=out_specs,
-            mode=mode
+            mode=mode,
         )
-    
+
     # Create the device mesh
     mesh = DeviceMesh(devices=devices, shape=mesh_shape)
-    
+
     # Create JIT-compiled function first with specified mode
     jitted_fn = jit(fn, mode=mode)
-    
+
     # Then apply mesh sharding
     return mesh_sharded(
-        jitted_fn,
-        mesh=mesh,
-        in_partition=in_specs,
-        out_partition=out_specs
+        jitted_fn, mesh=mesh, in_partition=in_specs, out_partition=out_specs
     )

@@ -59,16 +59,14 @@ Examples:
 from __future__ import annotations
 
 import importlib.metadata
-from typing import Dict, Optional, Union, Any, Callable
+from typing import Any, Callable, Dict, Optional, Union
 
 # Import primary API components - these are the only public interfaces
-from ember.api import (
-    data,  # Dataset access (datasets("mmlu"), etc.)
-    models,  # Language model access (models.openai.gpt4, etc.)
-    non,  # Network of Networks patterns (non.UniformEnsemble, etc.)
-    operators,  # Operator registry (operators.get_operator(), etc.)
-    xcs,  # Execution optimization (xcs.jit, etc.)
-)
+from ember.api import data  # Dataset access (datasets("mmlu"), etc.)
+from ember.api import models  # Language model access (models.openai.gpt4, etc.)
+from ember.api import non  # Network of Networks patterns (non.UniformEnsemble, etc.)
+from ember.api import operators  # Operator registry (operators.get_operator(), etc.)
+from ember.api import xcs  # Execution optimization (xcs.jit, etc.)
 
 # Import necessary components for initialization
 # NOTE: These imports are moved to their usage points to avoid circular imports
@@ -145,8 +143,8 @@ def initialize_ember(
         model = registry.get_model("openai:gpt-4")
     """
     # Import here to avoid circular imports
-    from ember.core.utils.logging import configure_logging
     from ember.core.config.manager import create_config_manager
+    from ember.core.utils.logging import configure_logging
 
     # 0. Configure logging first
     configure_logging(verbose=verbose_logging)
@@ -210,7 +208,7 @@ def init(
         response = service(models.ModelEnum.gpt_4o, "What is quantum computing?")
         usage = service.usage_service.get_total_usage()
     """
-    from ember.api.models import initialize_registry, ModelService, UsageService
+    from ember.api.models import ModelService, UsageService, initialize_registry
 
     # Initialize configuration if needed
     config_manager = None

@@ -4,7 +4,7 @@ This example demonstrates how to manually register models with the ModelRegistry
 using the new simplified API.
 
 IMPORTANT: Model pricing and context window information must be manually configured!
-When models are discovered via API, they DO NOT include pricing or context window 
+When models are discovered via API, they DO NOT include pricing or context window
 information automatically. You must:
 
 1. Add this information in your config.yaml file in the project root:

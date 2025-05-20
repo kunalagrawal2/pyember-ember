@@ -5,7 +5,7 @@ using the simplified API. The script shows how to check for model availability
 and retrieve model information.
 
 IMPORTANT: Model pricing and context window information must be manually configured!
-When models are discovered via API, they DO NOT include pricing or context window 
+When models are discovered via API, they DO NOT include pricing or context window
 information automatically. You must:
 
 1. Add this information in your config.yaml file in the project root:
@@ -291,10 +291,16 @@ def check_specific_models(model_ids: List[str]):
         if exists:
             info = registry.get_model_info(model_id)
             logger.info(f"✅ Model '{model_id}' is available")
-            logger.info(f"   - Provider: {info.provider.name if hasattr(info.provider, 'name') else 'Unknown'}")
+            logger.info(
+                f"   - Provider: {info.provider.name if hasattr(info.provider, 'name') else 'Unknown'}"
+            )
             if hasattr(info, "cost") and info.cost:
-                logger.info(f"   - Input cost: ${info.cost.input_cost_per_thousand:.4f} per 1K tokens")
-                logger.info(f"   - Output cost: ${info.cost.output_cost_per_thousand:.4f} per 1K tokens")
+                logger.info(
+                    f"   - Input cost: ${info.cost.input_cost_per_thousand:.4f} per 1K tokens"
+                )
+                logger.info(
+                    f"   - Output cost: ${info.cost.output_cost_per_thousand:.4f} per 1K tokens"
+                )
         else:
             logger.warning(f"❌ Model '{model_id}' is not available")
 
@@ -324,8 +330,10 @@ def main():
     logger.info("To check if a model exists: registry.is_registered('openai:gpt-4o')")
     logger.info("To get model info: registry.get_model_info('openai:gpt-4o')")
     logger.info("To use a model: model_service = models.create_model_service(registry)")
-    logger.info("               model_service.invoke_model('openai:gpt-4o', 'What is the capital of France?')")
-    
+    logger.info(
+        "               model_service.invoke_model('openai:gpt-4o', 'What is the capital of France?')"
+    )
+
     logger.info("Example completed!")
 
 

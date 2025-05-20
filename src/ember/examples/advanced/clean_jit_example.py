@@ -14,11 +14,11 @@ import time
 from typing import ClassVar, List, Type
 
 from ember.api import models
-from ember.xcs import jit, execution_options, get_jit_stats, explain_jit_selection
 
 # ember imports
 from ember.core.registry.operator.base.operator_base import Operator, Specification
 from ember.core.types.ember_model import EmberModel, Field
+from ember.xcs import execution_options, explain_jit_selection, get_jit_stats, jit
 
 ###############################################################################
 # Input/Output Models

@@ -40,27 +40,21 @@ import ember.api.types as types
 operator = operators
 
 # Import high-level API components
-from ember.api.data import (
-    Dataset,  # Dataset container class
-    DatasetBuilder,  # Builder pattern for dataset configuration
-    DatasetConfig,  # Configuration for dataset loading
-    DatasetEntry,  # Individual dataset entry
-    DatasetInfo,  # Dataset metadata
-    TaskType,  # Enum of dataset task types
-    datasets,  # Function to load datasets
-    get_dataset_info,  # Get dataset metadata
-    list_available_datasets,  # List available datasets
-    register,  # Dataset registration decorator
-)
-from ember.api.eval import (
-    EvaluationPipeline,  # Pipeline for batch evaluation
-    Evaluator,  # Evaluator for model outputs
-)
-from ember.api.models import (
-    ModelAPI,  # High-level model API
-    ModelBuilder,  # Builder pattern for model configuration
-    ModelEnum,  # Type-safe model references
-)
+from ember.api.data import Dataset  # Dataset container class
+from ember.api.data import DatasetBuilder  # Builder pattern for dataset configuration
+from ember.api.data import DatasetConfig  # Configuration for dataset loading
+from ember.api.data import DatasetEntry  # Individual dataset entry
+from ember.api.data import DatasetInfo  # Dataset metadata
+from ember.api.data import TaskType  # Enum of dataset task types
+from ember.api.data import datasets  # Function to load datasets
+from ember.api.data import get_dataset_info  # Get dataset metadata
+from ember.api.data import list_available_datasets  # List available datasets
+from ember.api.data import register  # Dataset registration decorator
+from ember.api.eval import EvaluationPipeline  # Pipeline for batch evaluation
+from ember.api.eval import Evaluator  # Evaluator for model outputs
+from ember.api.models import ModelAPI  # High-level model API
+from ember.api.models import ModelBuilder  # Builder pattern for model configuration
+from ember.api.models import ModelEnum  # Type-safe model references
 
 # Public interface - export facades, modules, and direct API components
 __all__ = [

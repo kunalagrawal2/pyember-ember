@@ -3,8 +3,8 @@
 import pytest
 
 from ember.api.data import (
-    DatasetBuilder,
     Dataset,
+    DatasetBuilder,
     DatasetEntry,
     list_available_datasets,
 )

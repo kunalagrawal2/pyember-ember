@@ -1,7 +1,7 @@
 """
 MCQ Experiment Example: Multiple-Choice Question Evaluation Example
 
-This simplified example demonstrates how to create and evaluate multiple-choice 
+This simplified example demonstrates how to create and evaluate multiple-choice
 questions using different answer strategies, without requiring external API calls.
 
 To run:

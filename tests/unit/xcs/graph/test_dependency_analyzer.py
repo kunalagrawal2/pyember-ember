@@ -7,7 +7,7 @@ wave computation for parallel scheduling.
 
 import pytest
 
-from ember.xcs import XCSGraph, DependencyAnalyzer
+from ember.xcs import DependencyAnalyzer, XCSGraph
 
 
 class TestDependencyAnalyzer:
@@ -20,15 +20,15 @@ class TestDependencyAnalyzer:
         graph.add_node(lambda x: x, "node1")
         graph.add_node(lambda x: x, "node2")
         graph.add_node(lambda x: x, "node3")
-        
+
         # Set up dependencies: node1 -> node2 -> node3
         graph.add_edge("node1", "node2")
         graph.add_edge("node2", "node3")
-        
+
         # Analyze dependencies
         analyzer = DependencyAnalyzer()
         deps = analyzer.analyze(graph)
-        
+
         # Verify expected dependencies
         assert deps["node1"] == set()
         assert deps["node2"] == {"node1"}
@@ -45,11 +45,11 @@ class TestDependencyAnalyzer:
             "E": set(),
             "F": set(),
         }
-        
+
         # Analyze with transitive closure
         analyzer = DependencyAnalyzer()
         all_deps = analyzer.compute_transitive_closure(direct_deps)
-        
+
         # Verify expected transitive dependencies
         assert all_deps["A"] == {"B", "C", "D", "E", "F"}
         assert all_deps["B"] == {"D", "F"}
@@ -67,7 +67,7 @@ class TestDependencyAnalyzer:
         graph.add_node(lambda x: x, "C")
         graph.add_node(lambda x: x, "D")
         graph.add_node(lambda x: x, "E")
-        
+
         # Set up dependencies
         # A -> B -> D
         # A -> C -> D
@@ -77,11 +77,11 @@ class TestDependencyAnalyzer:
         graph.add_edge("B", "D")
         graph.add_edge("C", "D")
         graph.add_edge("C", "E")
-        
+
         # Get topological ordering
         analyzer = DependencyAnalyzer()
         order = analyzer.topological_sort(graph)
-        
+
         # Verify topological properties
         # 1. A comes before B and C
         # 2. B comes before D
@@ -99,12 +99,12 @@ class TestDependencyAnalyzer:
         graph.add_node(lambda x: x, "A")
         graph.add_node(lambda x: x, "B")
         graph.add_node(lambda x: x, "C")
-        
+
         # Set up cycle: A -> B -> C -> A
         graph.add_edge("A", "B")
         graph.add_edge("B", "C")
         graph.add_edge("C", "A")
-        
+
         # Verify cycle detection
         analyzer = DependencyAnalyzer()
         with pytest.raises(ValueError, match="cycle"):
@@ -119,7 +119,7 @@ class TestDependencyAnalyzer:
         graph.add_node(lambda x: x, "B1")
         graph.add_node(lambda x: x, "B2")
         graph.add_node(lambda x: x, "C1")
-        
+
         # Dependencies:
         # Wave 1: A1, A2 (no dependencies)
         # Wave 2: B1 (depends on A1), B2 (depends on A2)
@@ -128,11 +128,11 @@ class TestDependencyAnalyzer:
         graph.add_edge("A2", "B2")
         graph.add_edge("B1", "C1")
         graph.add_edge("B2", "C1")
-        
+
         # Compute execution waves
         analyzer = DependencyAnalyzer()
         waves = analyzer.compute_execution_waves(graph)
-        
+
         # Verify wave structure
         assert len(waves) == 3  # Three waves
         assert set(waves[0]) == {"A1", "A2"}  # First wave
@@ -145,11 +145,11 @@ class TestDependencyAnalyzer:
         graph = XCSGraph()
         graph.add_node(lambda x: x, "A")
         graph.add_node(lambda x: x, "B")
-        
+
         # Set up cycle: A -> B -> A
         graph.add_edge("A", "B")
         graph.add_edge("B", "A")
-        
+
         # Verify cycle detection
         analyzer = DependencyAnalyzer()
         with pytest.raises(ValueError, match="cycle"):

@@ -4,7 +4,7 @@ This script verifies that the AIME dataset implementation works correctly.
 """
 
 import unittest
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from ember.core.utils.data.base.models import DatasetEntry
 from ember.core.utils.data.datasets_registry.aime import AIMEConfig, AIMEPrepper

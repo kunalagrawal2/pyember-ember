@@ -223,7 +223,7 @@ if __name__ == "__main__":
     from ember.xcs.engine.execution_options import set_execution_options
 
     configure_logging(verbose=False)
-    
+
     # Initialize the ember context
     context = get_ember_context()
     logger.info("Ember context initialized")

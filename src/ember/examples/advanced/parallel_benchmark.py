@@ -278,9 +278,11 @@ def run_benchmarks(
     best_strategy = (
         "Auto Parallel"
         if auto_speedup > explicit_speedup
-        else "Explicit Parallel"
-        if explicit_speedup > auto_speedup
-        else "Equal Performance"
+        else (
+            "Explicit Parallel"
+            if explicit_speedup > auto_speedup
+            else "Equal Performance"
+        )
     )
     console.print(f"\n[bold]Best strategy:[/bold] {best_strategy}")
 

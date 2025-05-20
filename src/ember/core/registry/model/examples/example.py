@@ -56,9 +56,7 @@ def main() -> None:
                     prompt="Explain quantum computing in 50 words",
                     timeout=DEFAULT_TIMEOUT,
                 )
-                print(
-                    f"🛎️ Service response from {model_id}:\n{service_response.data}\n"
-                )
+                print(f"🛎️ Service response from {model_id}:\n{service_response.data}\n")
 
                 # Style 2: Direct model instance for PyTorch-like workflows
                 model = service.get_model(model_identifier)

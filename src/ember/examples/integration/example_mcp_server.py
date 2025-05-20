@@ -1,14 +1,15 @@
 # Basic Echo Server to show Ember MCP Integration
 
-from mcp.server.fastmcp import FastMCP
 import logging
 import sys
+
+from mcp.server.fastmcp import FastMCP
 
 # Configure more verbose logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s [MCP Server - %(levelname)s] %(message)s',
-    stream=sys.stderr  # Explicitly write to stderr
+    format="%(asctime)s [MCP Server - %(levelname)s] %(message)s",
+    stream=sys.stderr,  # Explicitly write to stderr
 )
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 sys.stderr.reconfigure(line_buffering=True)
 
 mcp = FastMCP("Echo")
+
 
 @mcp.resource("echo://{message}")
 def echo_resource(message: str) -> str:
@@ -37,6 +39,7 @@ def echo_prompt(message: str) -> str:
     logger.info(f"Sending response: '{response_text}'")
     sys.stdout.flush()  # Ensure response is sent immediately
     return response_text
+
 
 if __name__ == "__main__":
     logger.info("Starting MCP Echo Server...")

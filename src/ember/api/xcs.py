@@ -1,7 +1,7 @@
 """XCS API for Ember.
 
-This module provides a clean interface for working with the XCS (Accelerated Compound Systems) 
-execution framework in Ember, offering high-performance execution capabilities for computational 
+This module provides a clean interface for working with the XCS (Accelerated Compound Systems)
+execution framework in Ember, offering high-performance execution capabilities for computational
 graphs, just-in-time tracing, and parallel execution transformations.
 
 Examples:
@@ -57,12 +57,14 @@ from ember.xcs import (
     TransformOptions,
     XCSExecutionOptions,
     autograph,
-    execute_graph as execute,
+)
+from ember.xcs import execute_graph as execute
+from ember.xcs import (
+    execution_options,
     jit,
     mesh_sharded,
     pmap,
     vmap,
-    execution_options,
 )
 
 __all__ = [

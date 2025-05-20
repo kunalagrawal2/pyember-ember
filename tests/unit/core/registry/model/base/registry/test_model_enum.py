@@ -1,6 +1,5 @@
 """Unit tests for ModelEnum and parse_model_str functionality."""
 
-
 from ember.core.registry.model.config.model_enum import (
     AnthropicModelEnum,
     DeepmindModelEnum,

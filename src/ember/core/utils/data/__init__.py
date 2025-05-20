@@ -83,9 +83,9 @@ def load_dataset_entries(
     if dataset.prepper:
         prepper = dataset.prepper
     else:
-        prepper_class: Optional[
-            Type[IDatasetPrepper]
-        ] = loader_factory.get_prepper_class(dataset_name=dataset_name)
+        prepper_class: Optional[Type[IDatasetPrepper]] = (
+            loader_factory.get_prepper_class(dataset_name=dataset_name)
+        )
         if prepper_class is None:
             raise ValueError(
                 f"Prepper for dataset '{dataset_name}' not found in loader factory."

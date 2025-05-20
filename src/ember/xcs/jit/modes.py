@@ -9,7 +9,7 @@ from enum import Enum
 
 class JITMode(str, Enum):
     """JIT compilation modes available in the system."""
-    
+
     AUTO = "auto"  # Automatically select the best strategy
     TRACE = "trace"  # Traditional execution tracing
     STRUCTURAL = "structural"  # Structure-based analysis

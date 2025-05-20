@@ -1,8 +1,8 @@
 """Performance tests comparing parallel vs sequential execution in JIT optimization.
 
 This module directly tests parallel execution benefits in Ember's JIT optimization system,
-using sleep-based operations to ensure consistent timing and clear demonstration of 
-parallelization gains. It follows the pattern from the successful examples in 
+using sleep-based operations to ensure consistent timing and clear demonstration of
+parallelization gains. It follows the pattern from the successful examples in
 src/ember/examples/basic/simple_jit_demo.py.
 """
 
@@ -17,12 +17,17 @@ import pytest
 from ember.core.registry.operator.base.operator_base import Operator
 from ember.core.registry.specification.specification import Specification
 from ember.core.types.ember_model import EmberModel
-from ember.xcs.engine.unified_engine import execute_graph, ExecutionOptions
-from ember.xcs.schedulers.unified_scheduler import NoOpScheduler, ParallelScheduler, SequentialScheduler, WaveScheduler
+from ember.xcs.engine.unified_engine import ExecutionOptions, execute_graph
 from ember.xcs.graph.xcs_graph import XCSGraph
 
 # Import JIT implementations
 from ember.xcs.jit import jit
+from ember.xcs.schedulers.unified_scheduler import (
+    NoOpScheduler,
+    ParallelScheduler,
+    SequentialScheduler,
+    WaveScheduler,
+)
 from ember.xcs.tracer.xcs_tracing import TracerContext
 
 # Configure logging
@@ -370,7 +375,9 @@ def test_jit_trace_to_graph_parallel_speedup():
     # Execute with parallel scheduler
     logger.info("\nExecuting with parallel scheduler:")
     par_scheduler = ParallelScheduler(max_workers=ensemble_width)
-    par_options = ExecutionOptions(scheduler_type="parallel", max_workers=ensemble_width)
+    par_options = ExecutionOptions(
+        scheduler_type="parallel", max_workers=ensemble_width
+    )
     start_par = time.time()
     _ = execute_graph(graph, global_input, options=par_options, scheduler=par_scheduler)
     par_time = time.time() - start_par

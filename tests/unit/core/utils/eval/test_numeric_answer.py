@@ -3,8 +3,8 @@
 import pytest
 
 from ember.core.utils.eval.numeric_answer import (
-    NumericAnswerEvaluator,
     AIMEAnswerEvaluator,
+    NumericAnswerEvaluator,
 )
 
 

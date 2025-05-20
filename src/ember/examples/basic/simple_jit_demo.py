@@ -20,18 +20,18 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type, Union
 
-from ember.xcs import (
-    jit, 
-    execution_options, 
-    ExecutionOptions,
-    XCSGraph, 
-    TracerContext,
-    BaseScheduler,
-    execute_graph
-)
-from ember.xcs.engine.execution_options import get_execution_options
 from ember.core.registry.operator.base.operator_base import Operator, Specification
 from ember.core.types.ember_model import EmberModel, Field
+from ember.xcs import (
+    BaseScheduler,
+    ExecutionOptions,
+    TracerContext,
+    XCSGraph,
+    execute_graph,
+    execution_options,
+    jit,
+)
+from ember.xcs.engine.execution_options import get_execution_options
 
 # Configure logging
 logging.basicConfig(
@@ -491,9 +491,9 @@ def demo_explicit_parallel_execution(*, num_ops: int, delay: float) -> None:
     logger.info("  Sequential scheduler...")
     start = time.time()
     _ = execute_graph(
-        graph=graph, 
-        inputs={"task_id": "sequential"}, 
-        options=ExecutionOptions(scheduler="wave")
+        graph=graph,
+        inputs={"task_id": "sequential"},
+        options=ExecutionOptions(scheduler="wave"),
     )
     seq_time = time.time() - start
     logger.info("    Completed in %.4fs", seq_time)
@@ -502,9 +502,9 @@ def demo_explicit_parallel_execution(*, num_ops: int, delay: float) -> None:
     logger.info("  Parallel scheduler...")
     start = time.time()
     _ = execute_graph(
-        graph=graph, 
-        inputs={"task_id": "parallel"}, 
-        options=ExecutionOptions(scheduler="parallel", max_workers=num_ops)
+        graph=graph,
+        inputs={"task_id": "parallel"},
+        options=ExecutionOptions(scheduler="parallel", max_workers=num_ops),
     )
     par_time = time.time() - start
     logger.info("    Completed in %.4fs", par_time)
@@ -602,7 +602,9 @@ def demo_execution_strategies(*, num_ops: int, delay: float) -> None:
             ]
             self.num_ops = num_ops
 
-        def forward(self, *, inputs: Union[DelayInput, Dict[str, Any]]) -> EnsembleOutput:
+        def forward(
+            self, *, inputs: Union[DelayInput, Dict[str, Any]]
+        ) -> EnsembleOutput:
             """Executes with strategy based on context.
 
             Checks the execution context for configuration parameters
@@ -617,7 +619,7 @@ def demo_execution_strategies(*, num_ops: int, delay: float) -> None:
                 Aggregated results from all child operations
             """
             results = []
-            
+
             # Extract task_id from inputs, handling both object and dict formats
             if isinstance(inputs, dict) and "task_id" in inputs:
                 task_id = inputs["task_id"]

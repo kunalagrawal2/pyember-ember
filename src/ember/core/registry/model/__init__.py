@@ -7,13 +7,15 @@ from __future__ import annotations
 
 from typing import List
 
+# Configuration and initialization - import from core config to avoid circular imports
+from ember.core.config.schema import EmberSettings
+
+# Import submodules
+from ember.core.registry.model import examples
 from ember.core.registry.model.base.registry.factory import ModelFactory
 
 # Registry components
 from ember.core.registry.model.base.registry.model_registry import ModelRegistry
-
-# Import submodules
-from ember.core.registry.model import examples
 from ember.core.registry.model.base.schemas.chat_schemas import (
     ChatRequest,
     ChatResponse,
@@ -39,9 +41,6 @@ from ember.core.registry.model.base.utils.model_registry_exceptions import (
     ModelRegistrationError,
 )
 from ember.core.registry.model.config.model_enum import ModelEnum, parse_model_str
-
-# Configuration and initialization - import from core config to avoid circular imports
-from ember.core.config.schema import EmberSettings
 
 # Base provider classes
 from ember.core.registry.model.providers.base_provider import (

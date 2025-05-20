@@ -43,8 +43,8 @@ from ember.xcs.api.types import (
 from ember.xcs.engine.execution_options import execution_options
 from ember.xcs.engine.unified_engine import execute_graph
 from ember.xcs.graph.xcs_graph import XCSGraph
-from ember.xcs.tracer.autograph import AutoGraphBuilder
 from ember.xcs.jit import jit as raw_jit
+from ember.xcs.tracer.autograph import AutoGraphBuilder
 from ember.xcs.tracer.xcs_tracing import TraceRecord
 from ember.xcs.transforms.mesh import DeviceMesh, PartitionSpec
 from ember.xcs.transforms.mesh import mesh_sharded as raw_mesh_sharded
@@ -242,25 +242,25 @@ class XCSAPI:
         """
         # Prepare execution options
         opts = options or XCSExecutionOptions()
-        
+
         # Convert API options to engine options
         from ember.xcs.engine.unified_engine import ExecutionOptions
+
         engine_options = ExecutionOptions(
             scheduler_type="parallel",  # Always use parallel execution in the API for performance
             max_workers=opts.max_workers,
             timeout_seconds=opts.timeout / 1000 if opts.timeout else None,
-            collect_metrics=True
+            collect_metrics=True,
         )
 
         # Record start time
         import time
+
         start_time = time.time()
 
         # Execute graph with the unified engine
         outputs = execute_graph(
-            graph=graph, 
-            global_input=inputs,
-            options=engine_options
+            graph=graph, global_input=inputs, options=engine_options
         )
 
         # Calculate execution time

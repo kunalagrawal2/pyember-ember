@@ -1,20 +1,21 @@
 """Test basic imports after refactoring."""
 
-import sys
-import os
 import inspect
+import os
+import sys
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
+
+from ember.xcs.engine.unified_engine import ExecutionOptions, execute_graph
 
 # Now import the modules to verify they still work
-from ember.xcs.jit import jit, JITMode
-from ember.xcs.transforms import vmap, pmap
-from ember.xcs.engine.unified_engine import execute_graph, ExecutionOptions
+from ember.xcs.jit import JITMode, jit
 from ember.xcs.schedulers.unified_scheduler import (
-    SequentialScheduler, 
-    ParallelScheduler
+    ParallelScheduler,
+    SequentialScheduler,
 )
+from ember.xcs.transforms import pmap, vmap
 
 # Print basic info to confirm imports work
 print("JIT modes:", [mode.value for mode in JITMode])

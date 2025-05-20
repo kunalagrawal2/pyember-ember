@@ -2,11 +2,11 @@
 Common utilities and shared structures for the XCS module.
 
 This package contains core data structures and utilities used across
-different components of the XCS system, including execution plans, 
+different components of the XCS system, including execution plans,
 shared type definitions, and helper functions.
 """
 
-from ember.xcs.common.plans import XCSPlan, XCSTask, ExecutionResult
+from ember.xcs.common.plans import ExecutionResult, XCSPlan, XCSTask
 
 __all__ = [
     "XCSPlan",

@@ -315,6 +315,7 @@ def load_dataset_entries(
     Deprecated since: 2025.03
     """
     import warnings
+
     from ember.core.utils.data import load_dataset_entries as new_load_dataset_entries
 
     warnings.warn(

@@ -14,13 +14,10 @@ logging.basicConfig(
 print("Testing Ember High-Level API Integration...")
 
 # Import high-level API components
-from ember.api import (
-    # Data components
+from ember.api import (  # Data components; Evaluation components; Model and operator components
     DatasetBuilder,
     datasets,
-    # Evaluation components
     eval,
-    # Model and operator components
     models,
     non,
     operator,

@@ -13,7 +13,7 @@ import pytest
 from ember.api.data import (
     Dataset,
     DatasetBuilder,
-    DatasetConfig, 
+    DatasetConfig,
     DatasetEntry,
     DatasetInfo,
     TaskType,
@@ -104,11 +104,15 @@ class TestDatasetsFunction(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test fixtures and mocks."""
         # Create patch for DATASET_REGISTRY where it's defined
-        self.registry_patcher = mock.patch("ember.core.utils.data.registry.DATASET_REGISTRY")
+        self.registry_patcher = mock.patch(
+            "ember.core.utils.data.registry.DATASET_REGISTRY"
+        )
         self.mock_registry = self.registry_patcher.start()
 
         # Create patch for DatasetService where it is defined
-        self.service_patcher = mock.patch("ember.core.utils.data.service.DatasetService")
+        self.service_patcher = mock.patch(
+            "ember.core.utils.data.service.DatasetService"
+        )
         self.mock_service_cls = self.service_patcher.start()
         self.mock_service = self.mock_service_cls.return_value
 
@@ -140,7 +144,7 @@ class TestDatasetsFunction(unittest.TestCase):
         # Arrange
         # Skip this test since it requires real API access
         return
-        
+
         dataset_name = "mmlu"
 
         # Act
@@ -168,7 +172,7 @@ class TestDatasetsFunction(unittest.TestCase):
         # Arrange
         # Skip this test since it requires real API access
         return
-        
+
         dataset_name = "mmlu"
         config = DatasetConfig(split="test", sample_size=10)
 
@@ -189,7 +193,12 @@ class TestDatasetsFunction(unittest.TestCase):
         # Arrange
         dataset_name = "nonexistent_dataset"
         self.mock_registry.get.return_value = None
-        self.mock_registry.list_datasets.return_value = ["aime", "codeforces", "commonsense_qa", "mmlu"]
+        self.mock_registry.list_datasets.return_value = [
+            "aime",
+            "codeforces",
+            "commonsense_qa",
+            "mmlu",
+        ]
 
         # Act & Assert
         with self.assertRaises(ValueError) as context:
@@ -206,7 +215,7 @@ class TestDatasetsFunction(unittest.TestCase):
         """datasets() should propagate service errors."""
         # Skip this test since it requires real API access
         return
-        
+
         # Arrange
         dataset_name = "mmlu"
         error_msg = "Service loading error"
@@ -227,18 +236,18 @@ class TestListAvailableDatasets(unittest.TestCase):
         """list_available_datasets() should return dataset names."""
         # This function should return a list of registered datasets
         # We don't care about exact contents, just that it satisfies the contract
-        
+
         # Act
         result = list_available_datasets()
 
         # Assert - verify the contract, not implementation details
         self.assertIsInstance(result, list, "Should return a list")
         self.assertGreater(len(result), 0, "Should return a non-empty list")
-        
+
         # All elements must be strings
         self.assertTrue(
-            all(isinstance(x, str) for x in result), 
-            "All dataset names should be strings"
+            all(isinstance(x, str) for x in result),
+            "All dataset names should be strings",
         )
 
 
@@ -249,7 +258,7 @@ class TestGetDatasetInfo(unittest.TestCase):
         """get_dataset_info() should return info for existing dataset."""
         # We'll use a known, standard dataset that should always be present
         dataset_name = "mmlu"
-        
+
         # Act
         result = get_dataset_info(name=dataset_name)
 
@@ -257,15 +266,15 @@ class TestGetDatasetInfo(unittest.TestCase):
         self.assertIsNotNone(result, "Should return info for known dataset")
         self.assertIsInstance(result, DatasetInfo, "Should return a DatasetInfo object")
         self.assertEqual(result.name, dataset_name, "Info should have correct name")
-    
+
     def test_get_dataset_info_nonexistent(self) -> None:
         """get_dataset_info() should handle nonexistent datasets appropriately."""
         # Use a name extremely unlikely to exist in any registry
         dataset_name = "this_dataset_definitely_does_not_exist_37842984"
-        
+
         # Act
         result = get_dataset_info(name=dataset_name)
-        
+
         # Assert
         self.assertIsNone(result, "Should return None for nonexistent datasets")
         # Comment out assertion as it fails with the real registry

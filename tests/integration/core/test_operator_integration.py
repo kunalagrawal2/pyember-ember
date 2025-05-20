@@ -4,7 +4,6 @@ These tests verify actual operator workflows with realistic compositions.
 Uses minimal test doubles to avoid import issues.
 """
 
-
 import pytest
 
 # Import minimal test doubles instead of actual implementations
