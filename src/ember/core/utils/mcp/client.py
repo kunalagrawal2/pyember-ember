@@ -10,7 +10,7 @@ from pydantic import Field, field_validator
 from requests.exceptions import HTTPError
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ember.core.exceptions import ModelProviderError, ValidationError
+from ember.core.exceptions import ValidationError
 from ember.core.registry.model.base.schemas.chat_schemas import (
     ChatRequest,
     ChatResponse,
@@ -36,7 +36,6 @@ from mcp.shared.exceptions import McpError
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-@provider("MCP")
 class McpClient():
     # Store model for MCP
     _model: Optional[BaseProviderModel] = None # Optional as a workaround so we can call registry.get_model(), have to inject manually
@@ -53,12 +52,9 @@ class McpClient():
     _client_capabilities: Optional[types.ClientCapabilities] = None
     
     # Store available tools, prompts, and resources
-    _tool_names: List[str] = []
-    _tool_details: Dict[str, Any] = {}
-    _prompt_names: List[str] = []
-    _prompt_details: Dict[str, Any] = {}
-    _resource_uris: List[str] = []
-    _resource_details: Dict[str, Any] = {}
+    tools: List[str] = []
+    prompts: List[str] = []
+    resources: List[str] = []
 
     def __init__(
     self,
@@ -118,12 +114,9 @@ class McpClient():
         self._server_capabilities: Optional[types.ServerCapabilities] = None
         
         # Initialize feature storage (same as provider)
-        self._tool_names: List[str] = []
-        self._tool_details: Dict[str, Any] = {}
-        self._prompt_names: List[str] = []
-        self._prompt_details: Dict[str, Any] = {}
-        self._resource_uris: List[str] = []
-        self._resource_details: Dict[str, Any] = {}
+        self.tools: List[str] = []
+        self.prompts: List[str] = []
+        self.resources: List[str] = []
         
         self.logger.debug(
             f"Initialized MCP client with command: {server_command} "
@@ -188,58 +181,374 @@ class McpClient():
             _analyze_server_capabilities(init_result) # Just for logging
 
             # If tools API is available, fetch available tools
-            self._fetch_tools()
+            self.fetch_tools()
 
             # TODO prompts and resources API not implemented yet
 
             # If prompts API is available, fetch available prompts
-            self._fetch_prompts()
+            self.fetch_prompts()
             
             # If resources API is available, fetch available resources
-            self._fetch_resources()
+            self.fetch_resources()
 
         except Exception as e:
             self.logger.error(f"Error during MCP initialization: {e}", exc_info=True)
-            raise ModelProviderError(f"Initialization failed: {e}")
+            raise Exception(f"Initialization failed: {e}")
 
-    async def _fetch_tools(self):
+    async def fetch_tools(self):
         if hasattr(self._server_capabilities, 'tools') and self._server_capabilities.tools:
                 try:
                     tools_result = await self.list_tools()
-                    self._tool_names = [tool.name for tool in tools_result]
-                    self._tool_details = {tool.name: tool for tool in tools_result}
-                    self.logger.info(f"Available tools: {self._tool_names}")
+                    self.tools = [tool.name for tool in tools_result]
+                    self.logger.info(f"Available tools: {self.tools}")
                 except Exception as e:
                     self.logger.warning(f"Failed to fetch available tools: {e}")
-                    self._tool_names = []
-                    self._tool_details = {}
+                    self.tools = []
         else:
             self.logger.info("Server does not support tools")
 
-    async def _fetch_prompts(self):
+    async def fetch_prompts(self):
         if hasattr(self._server_capabilities, 'prompts') and self._server_capabilities.prompts:
                 try:
                     prompts_result = await self.list_prompts()
-                    self._prompt_names = [prompt.name for prompt in prompts_result]
-                    self._prompt_details = {prompt.name: prompt for prompt in prompts_result}
-                    self.logger.info(f"Available prompts: {self._prompt_names}")
+                    self.prompts = [prompt.name for prompt in prompts_result]
+                    self.logger.info(f"Available prompts: {self.prompts}")
                 except Exception as e:
                     self.logger.warning(f"Failed to fetch available prompts: {e}")
-                    self._prompt_names = []
-                    self._prompt_details = {}
+                    self.prompts = []
         else:
             self.logger.info("Server does not support prompts")
 
-    async def _fetch_resources(self):
+    async def fetch_resources(self):
         if hasattr(self._server_capabilities, 'resources') and self._server_capabilities.resources:
                 try:
                     resources_result = await self.list_resources()
-                    self._resource_uris = [resource.uri for resource in resources_result]
-                    self._resource_details = {resource.uri: resource for resource in resources_result}
-                    self.logger.info(f"Available resources: {self._resource_uris}")
+                    self.resources = [resource.uri for resource in resources_result]
+                    self.logger.info(f"Available resources: {self.resources}")
                 except Exception as e:
                     self.logger.warning(f"Failed to fetch available resources: {e}")
-                    self._resource_uris = []
-                    self._resource_details = {}
+                    self.resources = []
         else:
             self.logger.info("Server does not support resources")
+
+    async def list_tools(self) -> List[types.Tool]:
+        """List available tools provided by the server."""
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        if not hasattr(self._server_capabilities, 'tools') or not self._server_capabilities.tools:
+            raise Exception("Server doesn't support tools API")
+        try:
+            tools_result = await self._session.list_tools()
+            self.logger.info(f"Available tools: {[tool.name for tool in tools_result.tools]}")
+            return tools_result.tools
+        except Exception as e:
+            self.logger.error(f"Failed to list tools: {e}")
+            raise Exception(f"Failed to list tools: {e}")
+
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """Call a tool provided by the server."""
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'tools') or not self._server_capabilities.tools:
+            raise Exception("Server doesn't support tools API")
+        
+        try:
+            result = await self._session.call_tool(name=tool_name, arguments=arguments)
+            return result.content
+        except Exception as e:
+            self.logger.error(f"Failed to call tool '{tool_name}': {e}")
+            raise Exception(f"Failed to call tool '{tool_name}': {e}")
+        
+    # Only tools are supported for now
+    # Prompts and Resources are not supported yet
+    
+    async def list_prompts(self) -> List[types.Prompt]:
+        """List available prompts provided by the server."""
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        if not hasattr(self._server_capabilities, 'prompts') or not self._server_capabilities.prompts:
+            raise Exception("Server doesn't support prompts API")
+        
+        try:
+            prompts_result = await self._session.list_prompts()
+            self.logger.info(f"Available prompts: {[prompt.name for prompt in prompts_result.prompts]}")
+            return prompts_result.prompts
+        except Exception as e:
+            self.logger.error(f"Failed to list prompts: {e}")
+            raise Exception(f"Failed to list prompts: {e}")
+        
+    async def get_prompt(self, prompt_name: str, parameters: Optional[Dict[str, Any]] = None) -> Any:
+        """Get a prompt from the server.
+        
+        Args:
+            prompt_name: Name of the prompt to retrieve
+            parameters: Optional parameters to pass to the prompt
+            
+        Returns:
+            The prompt result from the server
+            
+        Raises:
+            Exception: If not connected to server, prompt request fails, or prompt is not found/invalid
+        """
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'prompts') or not self._server_capabilities.prompts:
+            raise Exception("Server doesn't support prompts API")
+        
+        try:
+            result = await self._session.get_prompt(name=prompt_name, arguments=parameters)
+            return result.content
+        except Exception as e:
+            self.logger.error(f"Failed to get prompt '{prompt_name}': {e}")
+            raise Exception(f"Failed to get prompt '{prompt_name}': {e}")
+
+    async def list_resources(self) -> List[types.Resource]:
+        """List available resources provided by the server."""
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'resources') or not self._server_capabilities.resources:
+            raise Exception("Server doesn't support resources API")
+        
+        try:
+            resources_result = await self._session.list_resources()
+            self.logger.info(f"Available resources: {[resource.uri for resource in resources_result.resources]}")
+            return resources_result.resources
+        except Exception as e:
+            self.logger.error(f"Failed to list resources: {e}")
+            raise Exception(f"Failed to list resources: {e}")
+
+    async def read_resource(self, uri: str) -> Any:
+        """Read a resource from the server."""
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        if not self._server_capabilities or not hasattr(self._server_capabilities, 'resources') or not self._server_capabilities.resources:
+            raise Exception("Server doesn't support resources API")
+        
+        try:
+            result = await self._session.read_resource(uri=uri)
+            return result.contents
+        except Exception as e:
+            self.logger.error(f"Failed to read resource '{uri}': {e}")
+            raise Exception(f"Failed to read resource '{uri}': {e}")
+        
+
+    def _extract_tool_calls(self, text: str) -> list:
+        """
+        Extract tool calls from model response text.
+        
+        Args:
+            text: Response text from the model
+            
+        Returns:
+            List of tool call dictionaries with name and args
+        """
+        tool_calls = []
+        
+        import re
+        # Match "Call tool: tool_name(param1=value1, param2=value2)"
+        pattern = r"Call tool->\s*(\w+)\s*\((.*?)\)"
+        matches = re.findall(pattern, text)
+        
+        for match in matches:
+            tool_name = match[0]
+            args_str = match[1]
+            
+            # Parse arguments string into a dictionary
+            args = {}
+            for arg_pair in args_str.split(','):
+                if '=' in arg_pair:
+                    key, value = arg_pair.split('=', 1)
+                    args[key.strip()] = value.strip().strip('"\'')  # Remove quotes if present
+            
+            tool_calls.append({"name": tool_name, "args": args})
+        
+        return tool_calls
+
+
+    # Will use this method for the agent to determine to use tools, read resources, etc. Used in forward
+    # Just using tools for now
+    async def process_query(self, query: str) -> str:
+        """
+        Process a query using MCP with automatic tool handling.
+        
+        Args:
+            query: The user's text query
+            
+        Returns:
+            A string containing the final response, including tool usage info
+        """
+        # Ensure session is initialized
+        if not hasattr(self, '_session') or self._session is None:
+            await self.connect()
+        
+        final_text = []
+        
+        try:
+            await self.fetch_tools()
+            
+            # Prepare the system prompt to inform the model about available tools
+            tool_instructions = ""
+            if self.tools:
+                tools_result = await self.list_tools()
+                tool_descriptions = [
+                    f"{tool.name}: {tool.description}" 
+                    for tool in tools_result
+                ]
+                
+                tool_instructions = f"""
+                The following tools are available. If you need to use a tool, respond with:
+                Call tool: tool_name(param1=value1, param2=value2)
+                
+                Available tools:
+                {"".join(tool_descriptions)}
+                """.strip('\n')
+
+            # Create the ChatRequest with proper provider_params
+            chat_request = ChatRequest(
+                prompt=query,
+                context=tool_instructions if tool_instructions else None,
+            )
+            print(f"Chat Request: {chat_request}")
+            # 4. Send initial request to the model through MCP
+           
+            response = self._model.forward(chat_request) # model forwards aren't async
+            
+            final_text.append(response.data)
+            
+            # 5. Check if the response contains tool calls
+            tool_calls = self._extract_tool_calls(response.data)
+            
+            # 6. Process tool calls if any
+            if tool_calls and self.tools:
+                for tool_call in tool_calls:
+                    tool_name = tool_call["name"]
+                    tool_args = tool_call["args"]
+                    
+                    self.logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+                    final_text.append(f"\n[Calling tool: {tool_name}]")
+
+                    #Just with tools for now
+                    # Execute the tool using existing method
+                    try:
+                        tool_result = await self.call_tool(tool_name, tool_args)
+                        
+                        # Format the tool result for display
+                        if isinstance(tool_result, list):
+                            # Handle content list if returned
+                            tool_output = "\n".join([str(item) for item in tool_result])
+                        else:
+                            tool_output = str(tool_result)
+                        
+                        final_text.append(f"[Tool result: {tool_output}]")
+                        
+                        # Send follow-up with tool results
+                        followup_prompt = f"""
+                        Previous query: {query}
+                        Previous response: {response.data}
+                        
+                        Tool call: {tool_name}({', '.join([f'{k}={v}' for k, v in tool_args.items()])})
+                        Tool result: {tool_output}
+                        
+                        Please provide your final answer based on this tool result.
+                        """
+                        
+                        # Process the follow-up through the appropriate channel
+                        if self._model:
+                            followup_response = await self._model.forward(ChatRequest(prompt=followup_prompt))
+                        
+                        final_text.append(followup_response.data)
+                        
+                    except Exception as e:
+                        error_msg = f"Error calling tool {tool_name}: {str(e)}"
+                        self.logger.error(error_msg)
+                        final_text.append(f"[{error_msg}]")
+            
+            return "".join(final_text)
+            
+        except Exception as e:
+            error_msg = f"Error in process_query: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return f"Error processing your query: {error_msg}"
+        
+
+    async def forward(
+        self, request: ChatRequest, params: Optional[ProviderParams] = None
+    ) -> ChatResponse:
+        """
+        Processes a chat request through the MCP provider or its underlying model.
+        
+        Args:
+            request: The chat request containing the prompt and parameters
+            params: Optional provider-specific parameters
+            
+        Returns:
+            ChatResponse: The response from processing the request
+            
+        Raises:
+            Exception: If no model is provided or if processing fails
+        """
+        if not self._model:
+            raise Exception("No underlying model provided")
+
+        try:
+            if self.tools: # tools should only be truthy if server supports tools
+                self.logger.info("Using process_query to handle potential tool usage")
+                result_text = await self.process_query(request.prompt)
+                return ChatResponse(data=result_text, model_id=self.model_info.id)
+            
+            self.logger.info("Using underlying model directly")
+            return await self._model.forward(request)
+            
+        except Exception as e:
+            self.logger.error(f"Error processing request: {e}", exc_info=True)
+            raise Exception(f"Request processing failed: {e}")
+        
+    
+    async def terminate(self) -> None:
+        """
+        Cleanly terminates the MCP client session and transport by exiting contexts.
+        
+        Raises:
+            Exception: If there are any errors during termination
+        """
+        self.logger.info("Terminating MCP provider session...")
+        # Exit contexts in reverse order of entry
+        exit_exception = None
+        try:
+            if self._session:
+                self.logger.debug("Exiting ClientSession context...")
+                await self._session.__aexit__(None, None, None)
+                self.logger.debug("ClientSession context exited.")
+        except Exception as e:
+            exit_exception = e
+            self.logger.error(f"Error exiting ClientSession context: {e}", exc_info=True)
+        finally:
+            self._session = None
+            self._session = None
+
+        try:
+            if self._stdio_client:
+                self.logger.debug("Exiting stdio_client context...")
+                await self._stdio_client.__aexit__(None, None, None)
+                self.logger.debug("stdio_client context exited.")
+        except Exception as e:
+            if not exit_exception:
+                exit_exception = e
+            self.logger.error(f"Error exiting stdio_client context: {e}", exc_info=True)
+        finally:
+            self._read = None
+            self._write = None
+            self._stdio_client = None
+
+        if exit_exception:
+             raise Exception(f"Error during MCP termination: {exit_exception}") from exit_exception
+        else:
+             self.logger.info("MCP provider terminated successfully.")
+
+    
