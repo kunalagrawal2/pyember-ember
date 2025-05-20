@@ -2,14 +2,15 @@
 """Unit tests for the MCP client implementation."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 import asyncio
+import logging
 
 from ember.core.registry.model.base.schemas.chat_schemas import ChatRequest, ChatResponse
 from ember.core.registry.model.base.schemas.model_info import ModelInfo
 from ember.core.registry.model.base.schemas.provider_info import ProviderInfo
-from ember.core.registry.model.providers.mcp.mcp_provider import McpClient
-from ember.core.exceptions import ModelProviderError
+from ember.core.registry.model.providers.base_provider import BaseProviderModel
+from ember.core.utils.mcp.client import McpClient
 
 class DummyMcpResponse:
     def __init__(self):
@@ -31,45 +32,58 @@ class DummyResourceResponse:
     def __init__(self):
         self.resources = [type("Resource", (), {"uri": "test_resource"})]
 
-def create_dummy_model_info() -> ModelInfo:
-    """Creates a dummy ModelInfo for testing."""
-    return ModelInfo(
-        id="mcp:test-server",
-        name="test-server",
-        provider=ProviderInfo(
-            name="MCP", 
-            custom_args={"command": "echo", "args": ""}
+class DummyModel(BaseProviderModel):
+    def __init__(self):
+        self.model_info = ModelInfo(
+            id="test-model",
+            name="test-model",
+            provider=ProviderInfo(name="test-provider")
         )
-    )
+    
+    def forward(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(data="Test response", model_id=self.model_info.id)
+    
+    def create_client(self) -> None:
+        """Required implementation of abstract method."""
+        pass  # No client needed for dummy model
 
 @pytest.fixture
-def mcp_client():
+def mock_logger():
+    """Returns a mock logger for testing."""
+    logger = MagicMock(spec=logging.Logger)
+    return logger
+
+@pytest.fixture
+def mcp_client(mock_logger):
     """Returns an MCP client for testing."""
-    return McpClient(create_dummy_model_info())
+    model = DummyModel()
+    return McpClient(
+        model=model,
+        server_command="echo",
+        server_args=["test"],
+        server_env={"TEST": "1"},
+        logger=mock_logger
+    )
 
 @pytest.mark.asyncio
-async def test_initialize_session(mcp_client):
-    """Test that initialize_session properly initializes the session."""
-    # Instead of trying to mock the complex AnyIO interactions,
-    # let's replace initialize_session with a simpler version for testing
-    
-    # Define a simplified version that records what was called
-    async def mock_initialize():
-        mcp_client._session = mock_client_session
-        mcp_client._stdio_client = mock_stdio
-        mcp_client._server_capabilities = DummyMcpResponse().capabilities
-        return True
-    
+async def test_connect(mcp_client):
+    """Test that connect properly initializes the session."""
     mock_client_session = AsyncMock()
     mock_stdio = AsyncMock()
+    mock_init_result = MagicMock()
+    mock_init_result.capabilities = DummyMcpResponse().capabilities
     
-    # Patch the entire initialize_session method
-    with patch.object(mcp_client, 'initialize_session', mock_initialize):
-        # Call the method
-        result = await mcp_client.initialize_session()
+    # Patch the session and stdio client creation
+    with patch('ember.core.utils.mcp.client.stdio_client', return_value=mock_stdio), \
+         patch('ember.core.utils.mcp.client.ClientSession', return_value=mock_client_session):
         
-        # Check if it was called successfully
-        assert result is True
+        mock_stdio.__aenter__.return_value = (AsyncMock(), AsyncMock())
+        mock_client_session.initialize.return_value = mock_init_result
+        
+        # Call connect
+        await mcp_client.connect()
+        
+        # Verify initialization
         assert mcp_client._session == mock_client_session
         assert mcp_client._stdio_client == mock_stdio
         assert hasattr(mcp_client._server_capabilities, 'prompts')
@@ -91,20 +105,15 @@ async def test_list_prompts(mcp_client):
 @pytest.mark.asyncio
 async def test_forward_with_model(mcp_client):
     """Test that forward correctly forwards requests to the underlying model."""
-    mock_model = AsyncMock()
-    mock_model.forward.return_value = ChatResponse(data="Test response")
-    
-    # Set the wrapped model
-    mcp_client.set_wrapped_model(mock_model)
-    
+    # Model is already set in fixture
     response = await mcp_client.forward(ChatRequest(prompt="Test prompt"))
     assert response.data == "Test response"
-    mock_model.forward.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_forward_no_model(mcp_client):
     """Test that forward raises an error when no model is provided."""
-    with pytest.raises(ModelProviderError):
+    mcp_client._model = None
+    with pytest.raises(Exception, match="No underlying model provided"):
         await mcp_client.forward(ChatRequest(prompt="Test prompt"))
 
 @pytest.mark.asyncio

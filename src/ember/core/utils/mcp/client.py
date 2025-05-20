@@ -6,33 +6,21 @@ import logging
 from typing import Any, Dict, Final, List, Optional, cast
 
 import asyncio
-from pydantic import Field, field_validator
-from requests.exceptions import HTTPError
-from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ember.core.exceptions import ValidationError
 from ember.core.registry.model.base.schemas.chat_schemas import (
     ChatRequest,
     ChatResponse,
     ProviderParams,
 )
-from ember.core.registry.model.base.schemas.usage import UsageStats
-from ember.core.registry.model.base.schemas.model_info import ModelInfo
-from ember.core.registry.model.base.utils.model_registry_exceptions import (
-    InvalidPromptError,
-    ProviderAPIError,
-)
-from ember.core.registry.model.base.utils.usage_calculator import DefaultUsageCalculator
+
 from ember.core.registry.model.providers.base_provider import (
     BaseChatParameters,
     BaseProviderModel,
 )
-from ember.plugin_system import provider
 
 from mcp import ClientSession, StdioServerParameters, types
 from mcp.client.stdio import stdio_client
 from mcp.server.fastmcp.prompts import base
-from mcp.shared.exceptions import McpError
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -416,7 +404,7 @@ class McpClient():
             )
             print(f"Chat Request: {chat_request}")
             # 4. Send initial request to the model through MCP
-            
+
             response = self._model.forward(chat_request) # model forwards aren't async
             
             final_text.append(response.data)
@@ -503,7 +491,7 @@ class McpClient():
                 return ChatResponse(data=result_text, model_id=self._model.model_info.id)
             
             self.logger.info("Using underlying model directly")
-            return await self._model.forward(request)
+            return self._model.forward(request)
             
         except Exception as e:
             self.logger.error(f"Error processing request: {e}", exc_info=True)
