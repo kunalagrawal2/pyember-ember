@@ -68,6 +68,7 @@ class McpClient():
         Initialize MCP client utility.
         
         Args:
+            model: The underlying model to use for processing requests
             server_command: Command to start the MCP server (required)
             server_args: Optional list of arguments for the server command
             server_env: Optional environment variables for the server process
@@ -79,7 +80,6 @@ class McpClient():
         self.logger = logger # Use the module-level logger
 
         # Validate required command
-        # TODO do we want general exceptions or more specific to MCP?
         if not server_command:
             raise Exception("MCP client requires server_command")
     
@@ -92,8 +92,7 @@ class McpClient():
 
         self.logger.debug(f"Set up server parameters: {self._server_params}") 
 
-
-         # Initialize client capabilities with sampling support
+        # Initialize client capabilities with sampling support
         self._client_capabilities = types.ClientCapabilities(
             sampling=types.SamplingCapability(),
             experimental=None,
@@ -102,18 +101,19 @@ class McpClient():
 
         self.logger.debug(f"Initialized client capabilities: {self._client_capabilities}") 
 
-        self.model = model # Can also be optional
+        # Store the underlying model
+        self._model = model
 
-        # Initialize async-related state (same as provider)
+        # Initialize async-related state
         self._session: Optional[ClientSession] = None
         self._stdio_client: Optional[stdio_client] = None
         self._read: Optional[asyncio.StreamReader] = None
         self._write: Optional[asyncio.StreamWriter] = None
         
-        # Initialize server capabilities (same as provider)
+        # Initialize server capabilities
         self._server_capabilities: Optional[types.ServerCapabilities] = None
         
-        # Initialize feature storage (same as provider)
+        # Initialize feature storage
         self.tools: List[str] = []
         self.prompts: List[str] = []
         self.resources: List[str] = []
@@ -160,7 +160,7 @@ class McpClient():
             self.logger.info("MCP session initialized")
 
             # After initialization, analyze and log server capabilities (just for logging purposes)
-            def _analyze_server_capabilities(self, init_result: types.InitializeResult) -> None:
+            def _analyze_server_capabilities(init_result: types.InitializeResult) -> None:
                 """Analyze and log server capabilities for debugging purposes."""
                 self._server_capabilities = init_result.capabilities
                 
@@ -181,15 +181,15 @@ class McpClient():
             _analyze_server_capabilities(init_result) # Just for logging
 
             # If tools API is available, fetch available tools
-            self.fetch_tools()
+            await self.fetch_tools()
 
             # TODO prompts and resources API not implemented yet
 
             # If prompts API is available, fetch available prompts
-            self.fetch_prompts()
+            await self.fetch_prompts()
             
             # If resources API is available, fetch available resources
-            self.fetch_resources()
+            await self.fetch_resources()
 
         except Exception as e:
             self.logger.error(f"Error during MCP initialization: {e}", exc_info=True)
@@ -416,7 +416,7 @@ class McpClient():
             )
             print(f"Chat Request: {chat_request}")
             # 4. Send initial request to the model through MCP
-           
+            
             response = self._model.forward(chat_request) # model forwards aren't async
             
             final_text.append(response.data)
@@ -500,7 +500,7 @@ class McpClient():
             if self.tools: # tools should only be truthy if server supports tools
                 self.logger.info("Using process_query to handle potential tool usage")
                 result_text = await self.process_query(request.prompt)
-                return ChatResponse(data=result_text, model_id=self.model_info.id)
+                return ChatResponse(data=result_text, model_id=self._model.model_info.id)
             
             self.logger.info("Using underlying model directly")
             return await self._model.forward(request)
